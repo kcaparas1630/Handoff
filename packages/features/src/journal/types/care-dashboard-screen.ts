@@ -7,6 +7,9 @@ export type CareDashboardScreenProps = {
   onOpenJournal: (childId: string) => void;
   onOpenEvent: (eventId: string) => void;
   onOpenProfile: (childId: string) => void;
+  onOpenRecord: (childId: string) => void;
+  /** Opens a capture already being processed; `local:<id>` addresses one still on this phone. */
+  onOpenCapture: (captureRef: string) => void;
 };
 
 export type DashboardHeaderProps = {

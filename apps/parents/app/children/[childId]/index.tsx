@@ -31,6 +31,17 @@ export default function ChildDashboardRoute() {
       router.push({ pathname: "/events/[eventId]", params: { eventId, childId: childId ?? "" } }),
     [router, childId],
   );
+  const openRecord = useCallback(
+    (id: string) =>
+      router.push({ pathname: "/children/[childId]/record", params: { childId: id } }),
+    [router],
+  );
+  // Accepts a server capture id or `local:<id>` for a recording still on this phone.
+  const openCapture = useCallback(
+    (captureRef: string) =>
+      router.push({ pathname: "/captures/[captureId]", params: { captureId: captureRef } }),
+    [router],
+  );
 
   if (!childId) {
     return (
@@ -54,6 +65,8 @@ export default function ChildDashboardRoute() {
         onOpenJournal={openJournal}
         onOpenEvent={openEvent}
         onOpenProfile={openProfile}
+        onOpenRecord={openRecord}
+        onOpenCapture={openCapture}
       />
     </>
   );

@@ -6,6 +6,8 @@ import type { ReactNode } from "react";
 import { ActivityIndicator, View } from "react-native";
 
 import { secureTokenCache } from "./auth/token-cache";
+import { useOutboxSync } from "./outbox/useOutboxSync";
+import { useRecordingStore } from "./state/recording-store";
 import { useSelectedContext } from "./state/context-store";
 import type { MobileProvidersProps } from "./types/providers";
 
@@ -63,14 +65,24 @@ function AuthenticatedApiClient({ apiUrl, children }: { apiUrl: string; children
 
   useEffect(() => {
     if (isSignedIn) return;
-    // architecture.md section 7: sign-out drops every cached server record and selection.
+    // architecture.md section 7: sign-out drops every cached server record and selection. The
+    // durable outbox is separate: useSignOutWithOutboxNotice removes those rows and files after
+    // telling the caregiver what is still unsent.
     queryClient.clear();
     useSelectedContext.getState().resetSelection();
+    useRecordingStore.getState().resetRecordingState();
   }, [isSignedIn, queryClient]);
 
   return (
     <ApiClientProvider client={client} userId={userId ?? null}>
+      <OutboxSync />
       {children}
     </ApiClientProvider>
   );
+}
+
+// Mounted once so foreground and interval retries run wherever the user is in the app.
+function OutboxSync() {
+  useOutboxSync();
+  return null;
 }

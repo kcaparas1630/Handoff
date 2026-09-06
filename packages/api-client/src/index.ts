@@ -15,14 +15,44 @@ export {
 export { useCreateInvitation, useInvitations, useRevokeInvitation } from "./invitations";
 export { useOverview } from "./overview";
 export { useDeleteEvent, useEvents, useUpdateEvent } from "./events";
-export { useSaveManualEntry } from "./captures";
+export {
+  useCapture,
+  useConfirmCapture,
+  useCreateTextCapture,
+  useRetryCapture,
+  useSaveManualEntry,
+  useUpdateCaptureDraft,
+} from "./captures";
+export {
+  completeUpload,
+  confirmCapture,
+  createAudioCapture,
+  createTextCapture,
+  getCapture,
+  retryCapture,
+  updateCaptureDraft,
+} from "./capture-requests";
+export {
+  CAPTURE_POLL_BACKOFF_AFTER_MS,
+  CAPTURE_POLL_FAST_MS,
+  CAPTURE_POLL_SLOW_MS,
+  capturePollInterval,
+  isCaptureInProgress,
+} from "./lib/capture-poll-interval";
 export { useCare, useCareAction } from "./care";
 export { useAcknowledgeBrief, useBrief, useCreateBrief } from "./handoffs";
 
 export type { ApiClientProviderProps } from "./provider";
 export type { RevokeInvitationVariables } from "./invitations";
 export type { DeleteEventVariables, UpdateEventVariables } from "./events";
-export type { SaveManualEntryInput } from "./captures";
+export type {
+  ConfirmCaptureVariables,
+  CreateTextCaptureVariables,
+  SaveManualEntryInput,
+  UpdateCaptureDraftVariables,
+  UseCaptureOptions,
+} from "./captures";
+export type { CreateAudioCaptureInput } from "./capture-requests";
 export type {
   ApiClient,
   ApiClientErrorCode,

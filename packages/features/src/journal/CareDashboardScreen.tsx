@@ -1,12 +1,14 @@
 import { useBootstrap, useOverview } from "@handoff/api-client";
 import type { EventKind, LatestFact, OverviewDto } from "@handoff/contracts";
 import { formatWallClock, renderAgeLabel } from "@handoff/domain";
+import { useOutboxCaptures } from "@handoff/mobile";
 import {
   Button,
   CareSnapshot,
   EventCard,
   HandoffCard,
   QuickCareActions,
+  RecordButton,
   Screen,
   StatusMessage,
 } from "@handoff/ui";
@@ -16,6 +18,7 @@ import { Text, View } from "react-native";
 
 import { CareStatus } from "../care/CareStatus";
 import { describeError } from "../shared/lib/describe-error";
+import { useReducedMotion } from "../shared/useReducedMotion";
 import { DashboardHeader } from "./DashboardHeader";
 import { QuickEntrySheet } from "./QuickEntrySheet";
 import { describeCaring } from "./lib/caring-line";
@@ -29,9 +32,13 @@ export function CareDashboardScreen({
   onOpenJournal,
   onOpenEvent,
   onOpenProfile,
+  onOpenRecord,
+  onOpenCapture,
 }: CareDashboardScreenProps) {
   const overview = useOverview(childId);
   const bootstrap = useBootstrap();
+  const pendingRecordings = useOutboxCaptures(childId);
+  const isReducedMotion = useReducedMotion();
   const [entryKind, setEntryKind] = useState<EventKind | null>(null);
   const [savedFact, setSavedFact] = useState<string | null>(null);
 
@@ -92,6 +99,28 @@ export function CareDashboardScreen({
 
       {data.pendingCaptureCount === 0 ? null : (
         <StatusMessage tone="info" message={describePending(data.pendingCaptureCount)} />
+      )}
+
+      <RecordButton
+        state={canContribute ? "idle" : "disabled"}
+        onPress={() => onOpenRecord(childId)}
+        hintText="Say a few things. Review them together."
+        disabledReason={
+          data.child.permission === "reader"
+            ? "You can read this child's care but not add updates."
+            : "Loading the workspace time zone before a recording can be saved."
+        }
+        isReducedMotion={isReducedMotion}
+        testID="dashboard-record"
+      />
+
+      {pendingRecordings.length === 0 ? null : (
+        <Button
+          label={describePendingReview(pendingRecordings.length)}
+          variant="secondary"
+          onPress={() => onOpenCapture(captureRefFor(pendingRecordings[0]))}
+          testID="dashboard-review-pending"
+        />
       )}
 
       <QuickCareActions
@@ -181,6 +210,16 @@ function describeUnknownTime(count: number): string {
 
 function describePending(count: number): string {
   return `Still processing: ${count} recording${count === 1 ? "" : "s"}.`;
+}
+
+function describePendingReview(count: number): string {
+  return count === 1 ? "Review pending update" : `Review pending updates (${count})`;
+}
+
+// A recording the server has not acknowledged is addressed by its local id.
+function captureRefFor(row: { captureId: string | null; localId: string } | undefined): string {
+  if (row === undefined) return "";
+  return row.captureId ?? `local:${row.localId}`;
 }
 
 function hasAnyLatest(data: OverviewDto): boolean {

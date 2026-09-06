@@ -2,6 +2,7 @@
 // import a router, so each app maps them to its own routes.
 
 export { SignInScreen } from "./auth/SignInScreen";
+export { useSignOutWithOutboxNotice } from "./auth/useSignOutWithOutboxNotice";
 export { OnboardingScreen } from "./onboarding/OnboardingScreen";
 export { ChildListScreen } from "./children/ChildListScreen";
 export { ChildProfileScreen } from "./children/ChildProfileScreen";
@@ -10,10 +11,13 @@ export { CareDashboardScreen } from "./journal/CareDashboardScreen";
 export { JournalScreen } from "./journal/JournalScreen";
 export { EventEditor } from "./journal/EventEditor";
 export { QuickEntrySheet } from "./journal/QuickEntrySheet";
+export { RecordScreen } from "./recording/RecordScreen";
+export { ReviewCaptureScreen } from "./recording/ReviewCaptureScreen";
 export { HandoffScreen } from "./handoff/HandoffScreen";
 export { CareStatus } from "./care/CareStatus";
 
 export type { SignInMode, SignInScreenProps, SignInStep } from "./auth/types/sign-in-screen";
+export type { SignOutWithOutboxNotice } from "./auth/types/sign-out-notice";
 export type {
   FirstChildStepProps,
   OnboardingScreenProps,
@@ -29,5 +33,11 @@ export type { JournalFilter, JournalScreenProps } from "./journal/types/journal-
 export type { EventEditorProps } from "./journal/types/event-editor";
 export type { QuickEntrySheetProps } from "./journal/types/quick-entry-sheet";
 export type { EntryForm, OccurrenceTime } from "./journal/types/entry-form";
+export type {
+  RecordScreenProps,
+  ReviewCaptureScreenProps,
+  ReviewTarget,
+  TypeInsteadSheetProps,
+} from "./recording/types/recording";
 export type { HandoffScreenProps } from "./handoff/types/handoff-screen";
 export type { CareStatusProps } from "./care/types/care-status";

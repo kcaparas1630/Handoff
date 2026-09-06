@@ -8,6 +8,8 @@ export type LabeledTextInputProps = {
   keyboardType?: "default" | "email-address" | "number-pad" | "decimal-pad";
   autoCapitalize?: "none" | "words" | "sentences";
   autoComplete?: "email" | "one-time-code" | "off";
+  /** Grows the field for a sentence or two; single-line stays the default. */
+  isMultiline?: boolean;
   isEditable?: boolean;
   testID?: string;
 };

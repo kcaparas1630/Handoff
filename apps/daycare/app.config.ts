@@ -17,7 +17,19 @@ const config: ExpoConfig = {
   web: {
     bundler: "metro",
   },
-  plugins: ["expo-router"],
+  plugins: [
+    "expo-router",
+    [
+      "expo-audio",
+      {
+        // Recording only happens after an explicit tap, and background recording stays off.
+        microphonePermission: "Handoff records short care updates only when you tap Record.",
+        recordAudioAndroid: true,
+        enableBackgroundRecording: false,
+        enableBackgroundPlayback: false,
+      },
+    ],
+  ],
 };
 
 export default config;

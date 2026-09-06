@@ -12,12 +12,16 @@
   },
   "dependencies": {
     "@handoff/api-client": "workspace:*",
+    "@handoff/contracts": "workspace:*",
     "@handoff/ui": "workspace:*"
   },
   "peerDependencies": {
     "@clerk/clerk-expo": "^2.20.0",
     "@tanstack/react-query": "^5.102.8",
+    "expo-audio": "~57.0.4",
+    "expo-file-system": "~57.0.6",
     "expo-secure-store": "~57.0.3",
+    "expo-sqlite": "~57.0.2",
     "react": "*",
     "react-native": "*",
     "zustand": "^5.0.15"

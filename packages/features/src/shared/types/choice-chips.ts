@@ -10,6 +10,6 @@ export type ChoiceChipsProps<Value extends string> = {
   selectedValues: readonly string[];
   onSelect: (value: Value) => void;
   /** Shown instead of the chips when there is nothing to choose from yet. */
-  emptyMessage?: string;
-  testID?: string;
+  emptyMessage?: string | undefined;
+  testID?: string | undefined;
 };

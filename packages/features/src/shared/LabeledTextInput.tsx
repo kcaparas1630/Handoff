@@ -11,6 +11,7 @@ export function LabeledTextInput({
   keyboardType = "default",
   autoCapitalize = "sentences",
   autoComplete = "off",
+  isMultiline = false,
   isEditable = true,
   testID,
 }: LabeledTextInputProps) {
@@ -27,9 +28,10 @@ export function LabeledTextInput({
         autoCapitalize={autoCapitalize}
         autoComplete={autoComplete}
         autoCorrect={false}
+        multiline={isMultiline}
         editable={isEditable}
         testID={testID}
-        className="min-h-touch rounded-md border border-border bg-surface px-md py-md text-base text-primary dark:border-border-dark dark:bg-surface-dark dark:text-primary-dark"
+        className={`rounded-md border border-border bg-surface px-md py-md text-base text-primary dark:border-border-dark dark:bg-surface-dark dark:text-primary-dark ${isMultiline ? "min-h-[96px]" : "min-h-touch"}`}
       />
       {hint ? <Text className="text-sm text-muted dark:text-muted-dark">{hint}</Text> : null}
     </View>
