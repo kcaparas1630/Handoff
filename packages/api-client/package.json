@@ -1,0 +1,24 @@
+{
+  "name": "@handoff/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@handoff/contracts": "workspace:*"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.102.8",
+    "react": "*",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2"
+  }
+}

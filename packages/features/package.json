@@ -1,0 +1,28 @@
+{
+  "name": "@handoff/features",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@handoff/api-client": "workspace:*",
+    "@handoff/contracts": "workspace:*",
+    "@handoff/mobile": "workspace:*",
+    "@handoff/ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "@clerk/clerk-expo": "^2.20.0",
+    "@tanstack/react-query": "^5.102.8",
+    "react": "*",
+    "react-native": "*"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2"
+  }
+}

@@ -1,0 +1,22 @@
+// architecture.md section 7: every key carries the signed-in user, plus the workspace or child it
+// belongs to, so switching account or workspace can never read another scope's cached data.
+
+// A hook still needs a key while an id is unresolved; this placeholder keeps those entries from
+// colliding with a real user, workspace, or child.
+const unknownScope = "unresolved";
+
+function scope(id: string | null): string {
+  return id ?? unknownScope;
+}
+
+export const queryKeys = {
+  bootstrap: (userId: string | null) => ["bootstrap", scope(userId)] as const,
+  children: (userId: string | null, workspaceId: string | null) =>
+    ["children", scope(userId), scope(workspaceId)] as const,
+  child: (userId: string | null, childId: string | null) =>
+    ["child", scope(userId), scope(childId)] as const,
+  invitations: (userId: string | null, workspaceId: string | null) =>
+    ["invitations", scope(userId), scope(workspaceId)] as const,
+  caregivers: (userId: string | null, childId: string | null) =>
+    ["caregivers", scope(userId), scope(childId)] as const,
+};

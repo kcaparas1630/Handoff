@@ -1,0 +1,13 @@
+export type LabeledTextInputProps = {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
+  /** Short explanation shown under the field, e.g. an accepted format. */
+  hint?: string;
+  keyboardType?: "default" | "email-address" | "number-pad";
+  autoCapitalize?: "none" | "words" | "sentences";
+  autoComplete?: "email" | "one-time-code" | "off";
+  isEditable?: boolean;
+  testID?: string;
+};
