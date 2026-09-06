@@ -99,6 +99,7 @@ export {
   attachmentKindSchema,
   assetReadResponseSchema,
   createAssetUploadRequestSchema,
+  completeAssetUploadResponseSchema,
   createAssetUploadResponseSchema,
 } from "./schemas/media";
 export {
@@ -220,6 +221,7 @@ export type {
 export type {
   AssetReadResponse,
   AttachmentKind,
+  CompleteAssetUploadResponse,
   CreateAssetUploadRequest,
   CreateAssetUploadResponse,
   MediaAssetDto,

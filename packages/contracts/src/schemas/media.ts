@@ -70,3 +70,6 @@ export const assetReadResponseSchema = z.object({
   url: z.url({ protocol: /^https$/ }),
   expiresAt: z.iso.datetime(),
 });
+
+// Attachment completion returns the asset only; its capture is unchanged by an upload.
+export const completeAssetUploadResponseSchema = z.object({ asset: mediaAssetDtoSchema });

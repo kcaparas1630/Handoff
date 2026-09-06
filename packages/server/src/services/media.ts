@@ -222,8 +222,9 @@ export async function completeAssetUpload({
   input: CompleteUploadRequest;
   tx?: ScopedTransaction;
 }): Promise<MediaAssetDto> {
-  const location = await resolveAssetLocation({ deps, actorUserId, assetId });
-  const workspaceId = location.workspaceId;
+  // An idempotent route already resolved the workspace; do not probe again inside its lock.
+  const workspaceId =
+    tx?.workspaceId ?? (await resolveAssetLocation({ deps, actorUserId, assetId })).workspaceId;
 
   const loaded = await inTenantTransaction(deps, workspaceId, tx, (scoped) =>
     loadUploaderAsset(scoped, { actorUserId, workspaceId, assetId }),

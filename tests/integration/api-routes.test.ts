@@ -10,7 +10,10 @@ import * as completeUploadRoute from "../../apps/api/src/app/v1/captures/[captur
 import * as confirmCaptureRoute from "../../apps/api/src/app/v1/captures/[captureId]/confirm+api";
 import * as captureRoute from "../../apps/api/src/app/v1/captures/[captureId]/index+api";
 import * as capturesRoute from "../../apps/api/src/app/v1/captures/index+api";
+import * as captureAssetsRoute from "../../apps/api/src/app/v1/captures/[captureId]/assets+api";
 import * as retryCaptureRoute from "../../apps/api/src/app/v1/captures/[captureId]/retry+api";
+import * as assetCompleteRoute from "../../apps/api/src/app/v1/assets/[assetId]/complete+api";
+import * as assetRoute from "../../apps/api/src/app/v1/assets/[assetId]/index+api";
 import * as careRoute from "../../apps/api/src/app/v1/children/[childId]/care+api";
 import * as caregiversRoute from "../../apps/api/src/app/v1/children/[childId]/caregivers+api";
 import * as childEventsRoute from "../../apps/api/src/app/v1/children/[childId]/events+api";
@@ -28,9 +31,13 @@ import * as workspacesRoute from "../../apps/api/src/app/v1/workspaces/index+api
 import { overrideRuntimeForTests } from "../../apps/api/src/server-runtime";
 import {
   acknowledgeBriefResponseSchema,
+  assetReadResponseSchema,
   bootstrapResponseSchema,
   captureDtoSchema,
   completeUploadResponseSchema,
+  createAssetUploadResponseSchema,
+  mediaAssetDtoSchema,
+  MAX_ATTACHMENTS_PER_CAPTURE,
   careListResponseSchema,
   careSessionDtoSchema,
   childDtoSchema,
@@ -52,12 +59,16 @@ import { createRequestDeps } from "../../packages/server/src/runtime";
 import { createChild } from "../../packages/server/src/services/children";
 import { createJobRunner } from "../../packages/server/src/jobs/runner";
 import { processCapture } from "../../packages/server/src/jobs/process-capture";
+import { validateMedia } from "../../packages/server/src/jobs/validate-media";
+import { buildObjectKey } from "../../packages/server/src/lib/object-key";
+import { READ_URL_SECONDS } from "../../packages/server/src/services/media";
 import { ProviderError } from "../../packages/server/src/lib/provider-error";
 import { createDataKeyService } from "../../packages/server/src/security/encryption/data-keys";
 import { createDevelopmentKeyWrapper } from "../../packages/server/src/security/encryption/development-key-wrapper";
 import { createFakeExtraction } from "./support/fake-extraction";
 import { createFakeObjectStorage } from "./support/fake-object-storage";
 import { createFakeTranscription } from "./support/fake-transcription";
+import { jpegImage } from "./support/media-fixtures";
 import type { OverviewDto } from "../../packages/contracts/src/index";
 import type { DbClient } from "../../packages/db/src/client";
 import type { ServerRuntime, WorkerRuntime } from "../../packages/server/src/types/runtime";
@@ -1093,5 +1104,251 @@ describeIntegration("v1 API routes", () => {
     expect(retried.capture.status).toBe("queued");
     // Reusing the existing job keeps the earlier checkpoints rather than paying for them again.
     expect(await countProcessJobs(audioCaptureId)).toBe(1);
+  });
+
+  // ── Attachment routes: allocate, upload, complete, validate, and read ────────────────
+  const attachmentCandidateId = randomUUID();
+  let attachmentCaptureId = "";
+  let attachmentEventId = "";
+  let attachmentAssetId = "";
+  let photoBytes: Buffer;
+
+  /** The same reviewed line as the milestone 2 story, under an id of its own. */
+  function attachmentCandidate(): Record<string, unknown> {
+    return { ...feedCandidate(), id: attachmentCandidateId };
+  }
+
+  function allocateAttachment(token: string, declaredSizeBytes: number): Promise<Response> {
+    return captureAssetsRoute.POST(
+      jsonRequest("POST", `/v1/captures/${attachmentCaptureId}/assets`, {
+        headers: authorized(token, randomUUID()),
+        body: JSON.stringify({ kind: "image", declaredMime: "image/jpeg", declaredSizeBytes }),
+      }),
+      { captureId: attachmentCaptureId },
+    );
+  }
+
+  function completeAttachment(assetId: string, sizeBytes: number, key: string): Promise<Response> {
+    return assetCompleteRoute.POST(
+      jsonRequest("POST", `/v1/assets/${assetId}/complete`, {
+        headers: authorized(OWNER_TOKEN, key),
+        body: JSON.stringify({ sizeBytes }),
+      }),
+      { assetId },
+    );
+  }
+
+  function readAsset(token: string, assetId: string): Promise<Response> {
+    return assetRoute.GET(
+      jsonRequest("GET", `/v1/assets/${assetId}`, { headers: authorized(token) }),
+      { assetId },
+    );
+  }
+
+  async function countValidationJobs(assetId: string): Promise<number> {
+    return withAdminSession(async (session) => {
+      const rows = await session<{ count: number }[]>`
+        select count(*)::int as count from handoff.jobs
+        where kind = 'validate_media' and asset_id = ${assetId}
+      `;
+      return rows[0]?.count ?? 0;
+    });
+  }
+
+  it("confirms a second entry for the attachment to publish onto", async () => {
+    const created = await capturesRoute.POST(
+      jsonRequest("POST", "/v1/captures", {
+        headers: authorized(OWNER_TOKEN, randomUUID()),
+        body: JSON.stringify({
+          childId,
+          clientCaptureId: randomUUID(),
+          inputKind: "manual",
+          capturedAt: new Date().toISOString(),
+          timezone: "America/Vancouver",
+          locale: "en-CA",
+          candidates: [attachmentCandidate()],
+        }),
+      }),
+    );
+    expect(created.status).toBe(201);
+    const capture = captureDtoSchema.parse(await readBody(created));
+    attachmentCaptureId = capture.id;
+
+    const { sourceStart: _start, sourceEnd: _end, ...reviewed } = attachmentCandidate();
+    const confirmed = await confirmCaptureRoute.POST(
+      jsonRequest("POST", `/v1/captures/${capture.id}/confirm`, {
+        headers: authorized(OWNER_TOKEN, randomUUID()),
+        body: JSON.stringify({
+          expectedDraftVersion: capture.draftVersion,
+          candidates: [reviewed],
+        }),
+      }),
+      { captureId: capture.id },
+    );
+    expect(confirmed.status).toBe(200);
+    const events = confirmCaptureResponseSchema.parse(await readBody(confirmed)).events;
+    attachmentEventId = events[0]?.id ?? "";
+    expect(attachmentEventId).not.toBe("");
+  });
+
+  it("hands the recipient a handoff that predates the attachment", async () => {
+    const created = await createBriefFor(RECIPIENT_TOKEN);
+    expect(created.status).toBe(201);
+    const brief = handoffBriefDtoSchema.parse(await readBody(created));
+    expect(brief.snapshot.updates).toContainEqual(
+      expect.objectContaining({ eventId: attachmentEventId, label: "new", readyAssetIds: [] }),
+    );
+
+    const acknowledged = await acknowledgeRoute.POST(
+      jsonRequest("POST", `/v1/handoffs/${brief.id}/acknowledge`, {
+        headers: authorized(RECIPIENT_TOKEN, randomUUID()),
+        body: JSON.stringify({ startCare: false }),
+      }),
+      { briefId: brief.id },
+    );
+    expect(acknowledged.status).toBe(200);
+  });
+
+  it("allocates three attachments on the confirmed capture and refuses a fourth", async () => {
+    photoBytes = (await jpegImage({ width: 48, height: 48 })).bytes;
+
+    const first = await allocateAttachment(OWNER_TOKEN, photoBytes.byteLength);
+    expect(first.status).toBe(201);
+    const allocated = createAssetUploadResponseSchema.parse(await readBody(first));
+    expect(allocated.asset.status).toBe("pending_upload");
+    expect(allocated.upload.method).toBe("PUT");
+    expect(allocated.upload.assetId).toBe(allocated.asset.id);
+    attachmentAssetId = allocated.asset.id;
+
+    for (let extra = 1; extra < MAX_ATTACHMENTS_PER_CAPTURE; extra += 1) {
+      const more = await allocateAttachment(OWNER_TOKEN, 2_048);
+      expect(more.status).toBe(201);
+    }
+
+    const overLimit = await allocateAttachment(OWNER_TOKEN, 2_048);
+    expect(overLimit.status).toBe(422);
+    expect((await readBody(overLimit)).code).toBe("validation_failed");
+  });
+
+  it("refuses a completion before the object exists", async () => {
+    const response = await completeAttachment(
+      attachmentAssetId,
+      photoBytes.byteLength,
+      randomUUID(),
+    );
+    expect(response.status).toBe(422);
+    expect((await readBody(response)).code).toBe("validation_failed");
+    expect(await countValidationJobs(attachmentAssetId)).toBe(0);
+  });
+
+  it("queues exactly one validation job on completion and replays a repeated one", async () => {
+    // Stands in for the client's direct PUT to the signed URL.
+    storage.put(
+      buildObjectKey({
+        workspaceId,
+        childId,
+        captureId: attachmentCaptureId,
+        assetId: attachmentAssetId,
+        mime: "image/jpeg",
+      }),
+      photoBytes,
+      "image/jpeg",
+    );
+
+    const key = randomUUID();
+    const first = await completeAttachment(attachmentAssetId, photoBytes.byteLength, key);
+    expect(first.status).toBe(200);
+    expect(mediaAssetDtoSchema.parse((await readBody(first)).asset).status).toBe("uploaded");
+    expect(await countValidationJobs(attachmentAssetId)).toBe(1);
+
+    const replay = await completeAttachment(attachmentAssetId, photoBytes.byteLength, key);
+    expect(replay.status).toBe(200);
+    expect(mediaAssetDtoSchema.parse((await readBody(replay)).asset).status).toBe("uploaded");
+    expect(await countValidationJobs(attachmentAssetId)).toBe(1);
+  });
+
+  it("hides an uploaded attachment from its own author until validation has run", async () => {
+    const response = await readAsset(OWNER_TOKEN, attachmentAssetId);
+    expect(response.status).toBe(404);
+    expect((await readBody(response)).code).toBe("not_found");
+  });
+
+  it("signs a short-lived read URL once the worker has published the asset", async () => {
+    const worker: WorkerRuntime = {
+      ...runtime,
+      storage,
+      jobsDb: dispatcher.db,
+      transcription: createFakeTranscription(),
+      extraction: createFakeExtraction(),
+    };
+    const runner = createJobRunner({
+      runtime: worker,
+      handlers: { validate_media: validateMedia },
+      concurrency: 1,
+      leaseMs: 30_000,
+    });
+    while ((await runner.runOnce()) > 0) {
+      // Drain the queue so the asset is genuinely published before it is read.
+    }
+
+    const signedBefore = storage.readUrls.length;
+    const requestedAt = Date.now();
+    const response = await readAsset(OWNER_TOKEN, attachmentAssetId);
+    expect(response.status).toBe(200);
+    const read = assetReadResponseSchema.parse(await readBody(response));
+    expect(read.asset.status).toBe("ready");
+    // A read URL is never stored or replayed, so this request signed one of its own.
+    expect(storage.readUrls).toHaveLength(signedBefore + 1);
+    const expiresAt = Date.parse(read.expiresAt);
+    expect(expiresAt).toBeGreaterThan(requestedAt);
+    expect(expiresAt).toBeLessThanOrEqual(Date.now() + READ_URL_SECONDS * 1_000);
+  });
+
+  it("answers 404 for another workspace's member and 200 for a linked reader", async () => {
+    const outsider = await readAsset(OUTSIDER_TOKEN, attachmentAssetId);
+    expect(outsider.status).toBe(404);
+    expect((await readBody(outsider)).code).toBe("not_found");
+
+    const reader = await readAsset(READER_TOKEN, attachmentAssetId);
+    expect(reader.status).toBe(200);
+    expect(assetReadResponseSchema.parse(await readBody(reader)).asset.kind).toBe("image");
+  });
+
+  it("never signs the author's raw audio for another contributor", async () => {
+    const capture = captureDtoSchema.parse(await readCapture(OWNER_TOKEN, audioCaptureId));
+    const audioAssetId = capture.audioAsset?.id ?? "";
+    expect(audioAssetId).not.toBe("");
+
+    // A contributor on this child, but not the caregiver who recorded it (data contract §7).
+    const response = await readAsset(RECIPIENT_TOKEN, audioAssetId);
+    expect(response.status).toBe(404);
+    expect((await readBody(response)).code).toBe("not_found");
+  });
+
+  it("lists the published attachment on the entry it belongs to", async () => {
+    const page = await childEventsRoute.GET(
+      jsonRequest("GET", `/v1/children/${childId}/events`, {
+        headers: authorized(RECIPIENT_TOKEN),
+      }),
+      { childId },
+    );
+    expect(page.status).toBe(200);
+    const events = eventsPageSchema.parse(await readBody(page));
+    const entry = events.items.find((event) => event.id === attachmentEventId);
+    expect(entry?.readyAssetIds).toEqual([attachmentAssetId]);
+  });
+
+  it("shows the attachment as an update in the handoff after the acknowledged one", async () => {
+    const next = await createBriefFor(RECIPIENT_TOKEN);
+    expect(next.status).toBe(201);
+    const brief = handoffBriefDtoSchema.parse(await readBody(next));
+    // The entry was already acknowledged as new, so attaching to it publishes a further revision.
+    expect(brief.snapshot.updates).toContainEqual(
+      expect.objectContaining({
+        eventId: attachmentEventId,
+        label: "updated",
+        readyAssetIds: [attachmentAssetId],
+      }),
+    );
   });
 });

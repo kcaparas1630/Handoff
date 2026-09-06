@@ -1,6 +1,6 @@
 import {
   assetReadResponseSchema,
-  completeUploadResponseSchema,
+  completeAssetUploadResponseSchema,
   createAssetUploadResponseSchema,
 } from "@handoff/contracts";
 import type {
@@ -51,7 +51,7 @@ export function completeAssetUpload(
   body: CompleteUploadRequest,
   idempotencyKey: string,
 ): Promise<CompleteUploadResponse> {
-  return client.request(completeUploadResponseSchema, {
+  return client.request(completeAssetUploadResponseSchema, {
     method: "POST",
     path: `/v1/assets/${encodeURIComponent(assetId)}/complete`,
     idempotencyKey,

@@ -1,0 +1,236 @@
+# UNEXECUTED. This flow has never been run: milestone 4 had no device, simulator, Clerk
+# development instance, or provisioned storage bucket available. Treat it as a reviewed script,
+# not as passing evidence.
+#
+# Requirements before the first run:
+#   - Both builds installed on one simulator or device: com.handoff.parents (caregiver A) and
+#     com.handoff.daycare (caregiver B). The flow switches between them with launchApp.
+#   - The photo library must already contain the three synthetic files this flow picks: JPEGs named
+#     PHOTO_NAME and SECOND_PHOTO_NAME, and an MP4 of at most 15 seconds named VIDEO_NAME. A fresh
+#     simulator library holds the vendor's stock images, not these, so seed it first
+#     (`xcrun simctl addmedia <device> <files>` or the Android equivalent). No real photograph of a
+#     child belongs in that library.
+#   - The system photo picker is not part of this app, so it carries no testIDs. The three picker
+#     steps below are marked MANUAL STEP: tap the named file, then Choose/Add. A repeatable run
+#     needs those taps recorded per platform.
+#   - A Clerk development instance. Both addresses must be Clerk test addresses (`+clerk_test`),
+#     whose emailed code is the fixed test code in SIGN_IN_CODE. No real child or caregiver data
+#     belongs in this file.
+#   - An already-seeded workspace containing CHILD_NAME where A is the owner and B holds an active
+#     contributor grant for that child. `tests/e2e/onboarding-invitation.yaml` covers that setup.
+#   - One running API, one running worker (`pnpm dev:worker`), a disposable database, and the
+#     private bucket from `pnpm storage:provision`. Only the worker publishes an attachment, so
+#     without it every tile stays "Awaiting validation" and this flow fails at the first wait.
+#   - `maestro test tests/e2e/media-handoff.yaml`.
+#
+# Every selector is a testID that exists in packages/features or packages/ui today, or rendered
+# text. Attachment tiles carry an `attachment-<assetId>` testID whose id is not known in advance,
+# so they are matched by the spoken label AttachmentTile builds instead.
+#
+# The demo this covers is milestone 4's: attach a photo and a short video after a recording; an
+# authorized recipient sees them from the brief; an attachment added after that handoff appears in
+# the next update.
+
+appId: com.handoff.parents
+env:
+  A_EMAIL: "handoff.parent+clerk_test@example.com"
+  B_EMAIL: "handoff.daycare+clerk_test@example.com"
+  SIGN_IN_CODE: "424242"
+  CHILD_NAME: "Rowan"
+  TYPED_LINE: "Fed 60 ml from a bottle at 2 pm."
+  FEED_AMOUNT: "60"
+  PHOTO_NAME: "handoff-fixture-photo"
+  VIDEO_NAME: "handoff-fixture-video"
+  SECOND_PHOTO_NAME: "handoff-fixture-photo-two"
+---
+# ── Caregiver A: create an update and attach a photo while reviewing it ───────────────
+- launchApp:
+    appId: "com.handoff.parents"
+    clearState: true
+    permissions:
+      medialibrary: allow
+
+- assertVisible:
+    id: "sign-in-email"
+- tapOn:
+    id: "sign-in-email"
+- inputText: "${A_EMAIL}"
+- tapOn:
+    id: "sign-in-send-code"
+- tapOn:
+    id: "sign-in-code"
+- inputText: "${SIGN_IN_CODE}"
+- tapOn:
+    id: "sign-in-verify"
+
+- assertVisible: "Your children"
+- tapOn: "${CHILD_NAME}"
+- assertVisible:
+    id: "care-dashboard"
+
+# Typing rather than speaking keeps this flow runnable on a simulator, which has no microphone
+# input. Voice is covered by tests/e2e/voice-handoff.yaml; the attachment path is identical.
+- tapOn:
+    id: "dashboard-record"
+- assertVisible:
+    id: "record-screen"
+- tapOn:
+    id: "record-type-instead"
+- tapOn:
+    id: "type-instead-text"
+- inputText: "${TYPED_LINE}"
+- tapOn:
+    id: "type-instead-submit"
+
+- assertVisible:
+    id: "review-capture"
+- extendedWaitUntil:
+    visible: "Ready for review"
+    timeout: 60000
+- assertVisible: "Fed ${FEED_AMOUNT} ml.*"
+
+# The attachment control is secondary to the entries themselves and states the limit up front.
+- scrollUntilVisible:
+    element:
+      id: "attachment-add"
+    direction: DOWN
+- assertVisible: "You can add 3 more files to this update."
+- tapOn:
+    id: "attachment-add"
+- tapOn:
+    id: "attachment-pick-library"
+# MANUAL STEP: the system picker opens. Choose ${PHOTO_NAME} and confirm.
+
+# The file is on the phone and says so; nothing claims it is shared yet.
+- assertVisible:
+    id: "attachment-progress"
+- assertVisible: "1 file on this phone, not yet shared."
+- assertVisible: "You can add 2 more files to this update."
+
+- tapOn:
+    id: "review-save"
+
+# ── Caregiver A: add the short video on the transition after saving ──────────────────
+- assertVisible:
+    id: "review-saved"
+- assertVisible: "Want to add a photo or video to this update?.*"
+- scrollUntilVisible:
+    element:
+      id: "attachment-add"
+    direction: DOWN
+- tapOn:
+    id: "attachment-add"
+- tapOn:
+    id: "attachment-pick-library"
+# MANUAL STEP: choose ${VIDEO_NAME}, which must be 15 seconds or shorter, and confirm.
+
+# The upload runs from the outbox, so the wording moves from "on this phone" to "waiting for
+# checks" without ever calling an unvalidated file shared.
+- extendedWaitUntil:
+    visible: "1 file waiting for checks."
+    timeout: 60000
+
+- tapOn:
+    id: "review-saved-done"
+- assertVisible:
+    id: "care-dashboard"
+
+# Only the worker publishes an attachment, so the dashboard tile appears when validation lands.
+- extendedWaitUntil:
+    visible: "Photos and videos"
+    timeout: 120000
+# Two files validate in parallel, so which one lands first is not fixed; both tiles say in words
+# what they are, and the video offers playback rather than a still frame.
+- assertVisible: "Attachment 1 of 2,.*shared"
+- assertVisible: "Attachment 2 of 2,.*shared"
+- assertVisible: "Play video"
+
+# ── Caregiver B: sees both files from the handoff, not from a shared link ────────────
+- launchApp:
+    appId: "com.handoff.daycare"
+    clearState: true
+
+- assertVisible:
+    id: "sign-in-email"
+- tapOn:
+    id: "sign-in-email"
+- inputText: "${B_EMAIL}"
+- tapOn:
+    id: "sign-in-send-code"
+- tapOn:
+    id: "sign-in-code"
+- inputText: "${SIGN_IN_CODE}"
+- tapOn:
+    id: "sign-in-verify"
+
+- tapOn: "${CHILD_NAME}"
+- assertVisible:
+    id: "care-dashboard"
+- tapOn:
+    id: "handoff-card-open"
+- assertVisible:
+    id: "handoff-screen"
+- assertVisible: "Fed ${FEED_AMOUNT} ml.*"
+
+# The brief carries the attachments of the entry it renders, each signed for this reader alone.
+- assertVisible: "Shared with this update"
+- assertVisible: "Attachment 1 of 2,.*shared"
+- assertVisible: "Play video"
+- tapOn: "Play video"
+- assertVisible:
+    id: "attachment-modal-video"
+- tapOn:
+    id: "attachment-modal-close"
+
+- tapOn:
+    id: "handoff-acknowledge-start"
+- assertVisible:
+    id: "care-dashboard"
+
+# ── Caregiver A: attach a second photo to the already-handed-off entry ───────────────
+- launchApp:
+    appId: "com.handoff.parents"
+- assertVisible:
+    id: "care-dashboard"
+# The latest-known feed tile opens the entry it cites.
+- tapOn:
+    id: "care-snapshot-feed"
+- assertVisible:
+    id: "event-editor"
+- assertVisible: "Photos and videos on this entry"
+
+# The picker on an entry rides on the same capture, so the third file is the last one allowed.
+- scrollUntilVisible:
+    element:
+      id: "attachment-add"
+    direction: DOWN
+- assertVisible: "You can add 1 more file to this update."
+- tapOn:
+    id: "attachment-add"
+- tapOn:
+    id: "attachment-pick-library"
+# MANUAL STEP: choose ${SECOND_PHOTO_NAME} and confirm.
+
+- extendedWaitUntil:
+    visible: "1 file waiting for checks."
+    timeout: 60000
+- extendedWaitUntil:
+    visible: "Attachment 3 of 3,.*shared"
+    timeout: 120000
+- assertVisible: "This update already has the maximum of 3 files."
+
+# ── Caregiver B: the new attachment arrives as the next update, not silently ─────────
+- launchApp:
+    appId: "com.handoff.daycare"
+- assertVisible:
+    id: "care-dashboard"
+- tapOn:
+    id: "handoff-card-open"
+- assertVisible:
+    id: "handoff-screen"
+# Publishing an attachment appends a revision rather than rewriting the acknowledged one, so the
+# entry returns tagged as a change B has not read.
+- assertVisible: "Fed ${FEED_AMOUNT} ml.*"
+- assertVisible: "Updated"
+- assertVisible: "Shared with this update"
+- assertVisible: "Attachment 3 of 3,.*shared"

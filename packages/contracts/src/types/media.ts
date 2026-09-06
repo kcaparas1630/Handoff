@@ -8,6 +8,7 @@ import type {
   assetReadResponseSchema,
   createAssetUploadRequestSchema,
   createAssetUploadResponseSchema,
+  completeAssetUploadResponseSchema,
 } from "../schemas/media";
 
 export type MediaKind = z.infer<typeof mediaKindSchema>;
@@ -18,3 +19,4 @@ export type AttachmentKind = z.infer<typeof attachmentKindSchema>;
 export type CreateAssetUploadRequest = z.infer<typeof createAssetUploadRequestSchema>;
 export type CreateAssetUploadResponse = z.infer<typeof createAssetUploadResponseSchema>;
 export type AssetReadResponse = z.infer<typeof assetReadResponseSchema>;
+export type CompleteAssetUploadResponse = z.infer<typeof completeAssetUploadResponseSchema>;

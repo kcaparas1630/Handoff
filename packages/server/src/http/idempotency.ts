@@ -16,7 +16,7 @@ const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface IdempotentResult {
   status: number;
-  /** Canonical response body. Never a signed URL: fresh authorization issues those. */
+  /** Canonical response body. A retained upload authorization is scoped to one object and expires; read URLs are never retained. */
   body: unknown;
 }
 
