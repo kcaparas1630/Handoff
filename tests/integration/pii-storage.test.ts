@@ -40,6 +40,7 @@ const MARKERS = {
   eventNote: "Marker-Note-9f3a",
   milestoneQuote: "Marker-Quote-9f3a",
   sourceQuote: "Marker-Transcript-9f3a",
+  spokenText: "Marker-Spoken-9f3a",
 };
 
 async function dumpDatabase(adminUrl: string): Promise<string> {
@@ -90,6 +91,8 @@ describeIntegration("personal data at rest", () => {
       clerk,
       guardianRoleKey: "org:guardian",
       invitationRedirectUrl: "https://handoff.test/accept-invitation",
+      storage: null,
+      jobsDb: null,
       requestId: randomUUID(),
       now: () => new Date(),
     };
@@ -191,6 +194,22 @@ describeIntegration("personal data at rest", () => {
     milestoneEventId = confirmed.events[1]?.id ?? "";
     briefId = (await createBrief({ deps, actorUserId: ownerId, childId })).id;
 
+    // A typed capture stores its text as the raw transcript and queues one job, so the dump also
+    // covers what reaches the queue: jobs keep ids, never provider text (docs/pii-encryption.md).
+    await createCapture({
+      deps,
+      actorUserId: ownerId,
+      input: {
+        childId,
+        clientCaptureId: randomUUID(),
+        inputKind: "text",
+        capturedAt: new Date().toISOString(),
+        timezone: "UTC",
+        locale: "en-CA",
+        text: MARKERS.spokenText,
+      },
+    });
+
     await withTenantTransaction(api.db, { workspaceId }, (tx) =>
       runIdempotent({
         tx,
@@ -216,6 +235,8 @@ describeIntegration("personal data at rest", () => {
     const dump = await dumpDatabase(database.adminUrl);
     expect(dump).toContain("children:");
     expect(dump).toContain("idempotency_requests:");
+    // The queue is dumped with everything else: its payloads and checkpoints are in scope here.
+    expect(dump).toContain("jobs:");
     for (const [name, marker] of Object.entries(MARKERS)) {
       expect(`${name}: ${dump.includes(marker) ? "leaked" : "absent"}`).toBe(`${name}: absent`);
     }

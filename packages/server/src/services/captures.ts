@@ -2,7 +2,12 @@
 // Nothing here creates an event; only `confirmCapture` does, in one transaction under the child
 // lock (data contract §3).
 import { randomUUID } from "node:crypto";
-import { capturesRepository, careRepository, withTenantTransaction } from "@handoff/db";
+import {
+  capturesRepository,
+  careRepository,
+  jobsRepository,
+  withTenantTransaction,
+} from "@handoff/db";
 import { canCreateCapture, canReadOtherAuthorDraft, validateEventSemantics } from "@handoff/domain";
 import type {
   CaptureDraft,
@@ -10,13 +15,23 @@ import type {
   CreateCaptureRequest,
   DraftCandidate,
   UpdateCaptureDraftRequest,
+  UploadAuthorization,
 } from "@handoff/contracts";
-import type { CaptureRow, HandoffTransaction } from "@handoff/db";
+import type { CaptureRow, CaptureStatus, HandoffTransaction, MediaAssetRow } from "@handoff/db";
 import { authorizeChild } from "../auth/authorize";
 import { ApiHttpError } from "../http/errors";
 import { accessContextOf } from "../lib/access-context";
 import { inTenantTransaction } from "../lib/in-tenant-transaction";
+import { toMediaAssetDto } from "../lib/media-dto";
 import { decryptCaptureDraft, encryptCaptureDraft } from "../security/journal-fields";
+import {
+  allocateAudioAsset,
+  assertAudioIsAllowed,
+  authorizeAudioUpload,
+  findAudioAsset,
+  requireStorage,
+} from "./capture-uploads";
+import { processCaptureDedupeKey } from "./job-keys";
 import { resolveCaptureWorkspace, resolveChildWorkspace } from "./workspace-lookup";
 import type { ChildAuthorization } from "../types/authorization";
 import type { ScopedTransaction } from "../lib/in-tenant-transaction";
@@ -54,10 +69,18 @@ export function assertCandidatesAreValid(candidates: readonly DraftCandidate[]):
   }
 }
 
+export interface CaptureDtoExtras {
+  /** Omitted when the caller has not loaded it; absent means the same as null in the contract. */
+  audioAsset?: MediaAssetRow | null;
+  /** Returned only on creation and on an authorized re-read while awaiting upload. */
+  upload?: UploadAuthorization | null;
+}
+
 export async function toCaptureDto(
   deps: ServiceDeps,
   capture: CaptureRow,
   canReadDraft: boolean,
+  extras: CaptureDtoExtras = {},
 ): Promise<CaptureDto> {
   const draft =
     canReadDraft && capture.contentCiphertext !== null
@@ -81,6 +104,10 @@ export async function toCaptureDto(
     draft,
     errorCode: capture.errorCode,
     confirmedAt: capture.confirmedAt === null ? null : capture.confirmedAt.toISOString(),
+    ...(extras.audioAsset === undefined
+      ? {}
+      : { audioAsset: extras.audioAsset === null ? null : toMediaAssetDto(extras.audioAsset) }),
+    ...(extras.upload === undefined ? {} : { upload: extras.upload }),
     version: capture.version,
     createdAt: capture.createdAt.toISOString(),
   };
@@ -129,8 +156,12 @@ export async function createCapture({
   const workspaceId =
     tx?.workspaceId ?? (await resolveChildWorkspace({ deps, actorUserId, childId: input.childId }));
   const captureId = randomUUID();
+  // A recording is refused for its declared shape before anything is reserved, and refused
+  // outright when storage is unconfigured rather than accepted with nowhere to go.
+  const storage = input.inputKind === "audio" ? requireStorage(deps.storage) : null;
+  if (input.audio !== undefined) assertAudioIsAllowed(input.audio);
 
-  const capture = await inTenantTransaction(deps, workspaceId, tx, async (scoped) => {
+  const created = await inTenantTransaction(deps, workspaceId, tx, async (scoped) => {
     const authorization = await authorizeChild(scoped, {
       userId: actorUserId,
       workspaceId,
@@ -155,7 +186,7 @@ export async function createCapture({
       draft,
     });
 
-    return capturesRepository.insertCapture(scoped, {
+    const capture = await capturesRepository.insertCapture(scoped, {
       id: captureId,
       workspaceId,
       childId: input.childId,
@@ -168,25 +199,72 @@ export async function createCapture({
       locale: input.locale,
       contentCiphertext,
       schemaVersion: DRAFT_SCHEMA_VERSION,
-      status: "needs_review",
+      status: initialStatusFor(input.inputKind),
     });
+
+    if (capture.inputKind === "audio" && storage !== null && input.audio !== undefined) {
+      // A resubmitted client capture id returns the capture that already exists; its allocation
+      // exists too, so the quota is not reserved and a second object is not allocated.
+      const existing = await findAudioAsset(scoped, {
+        workspaceId,
+        childId: capture.childId,
+        captureId: capture.id,
+      });
+      const asset =
+        existing ??
+        (await allocateAudioAsset(scoped, {
+          storage,
+          workspaceId,
+          childId: capture.childId,
+          captureId: capture.id,
+          uploadedByUserId: actorUserId,
+          audio: input.audio,
+          now: deps.now(),
+        }));
+      return { capture, asset };
+    }
+
+    if (capture.inputKind === "text") {
+      // Typed text has nothing to upload, so its processing is queued in this same transaction.
+      // The dedupe key makes a replayed creation schedule the work once (data contract section 5).
+      await jobsRepository.enqueueJob(scoped, {
+        kind: "process_capture",
+        dedupeKey: processCaptureDedupeKey(capture.id),
+        workspaceId,
+        childId: capture.childId,
+        captureId: capture.id,
+        payload: { captureId: capture.id },
+      });
+    }
+    return { capture, asset: null };
   });
 
-  // A resubmitted client capture id returns the capture that already exists, whose draft was
-  // encrypted under its own row id rather than the one allocated above.
-  return toCaptureDto(deps, capture, true);
+  // The draft of a replayed capture was encrypted under its own row id, not the one allocated
+  // above, which is why the returned row is what gets decrypted here.
+  if (created.asset === null || storage === null) return toCaptureDto(deps, created.capture, true);
+  return toCaptureDto(deps, created.capture, true, {
+    audioAsset: created.asset,
+    upload: await authorizeAudioUpload(storage, created.asset),
+  });
+}
+
+/** Audio waits for its object, text waits for the worker, manual entry is already reviewed. */
+function initialStatusFor(inputKind: CreateCaptureRequest["inputKind"]): CaptureStatus {
+  if (inputKind === "audio") return "awaiting_upload";
+  if (inputKind === "text") return "queued";
+  return "needs_review";
 }
 
 /**
  * Manual entry arrives already reviewed, so it becomes one candidate per reported fact. Typed
- * text has no extraction until milestone 3: it is stored as the raw transcript with no candidate,
- * and the author can add one through PATCH before confirming.
+ * text is stored as the raw transcript, which is what the extraction job reads. An audio capture
+ * starts from an encrypted empty draft: it has no transcript until the worker writes one.
  */
 function buildDraft(input: CreateCaptureRequest): CaptureDraft {
-  if (input.inputKind === "text") {
+  if (input.inputKind === "text" || input.inputKind === "audio") {
     return {
       schemaVersion: DRAFT_SCHEMA_VERSION,
-      rawTranscript: input.text ?? null,
+      rawTranscript: input.inputKind === "text" ? (input.text ?? null) : null,
       formattedText: null,
       candidates: [],
     };
@@ -238,10 +316,29 @@ export async function getCapture({
   captureId: string;
 }): Promise<CaptureDto> {
   const workspaceId = await resolveCaptureWorkspace({ deps, actorUserId, captureId });
-  const loaded = await withTenantTransaction(deps.db, { workspaceId }, (tx) =>
-    loadAuthorizedCapture(tx, { actorUserId, workspaceId, captureId }),
-  );
-  return toCaptureDto(deps, loaded.capture, true);
+  const loaded = await withTenantTransaction(deps.db, { workspaceId }, async (tx) => {
+    const authorized = await loadAuthorizedCapture(tx, { actorUserId, workspaceId, captureId });
+    const asset = await findAudioAsset(tx, {
+      workspaceId,
+      childId: authorized.capture.childId,
+      captureId,
+    });
+    return { ...authorized, asset };
+  });
+
+  // An expired upload authorization is re-signed for the author rather than resent: the asset row
+  // is the source of truth and a signed URL is never stored or replayed (docs/pii-encryption.md).
+  const storage = deps.storage;
+  const asset = loaded.asset;
+  const upload =
+    loaded.isAuthor &&
+    loaded.capture.status === "awaiting_upload" &&
+    asset !== null &&
+    asset.status === "pending_upload" &&
+    storage !== null
+      ? await authorizeAudioUpload(storage, asset)
+      : null;
+  return toCaptureDto(deps, loaded.capture, true, { audioAsset: asset, upload });
 }
 
 export async function updateCaptureDraft({

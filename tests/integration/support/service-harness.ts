@@ -63,6 +63,8 @@ export async function createHarness(): Promise<TestHarness> {
       clerk,
       guardianRoleKey: GUARDIAN_ROLE_KEY,
       invitationRedirectUrl: "https://handoff.test/accept-invitation",
+      storage: null,
+      jobsDb: null,
       requestId: randomUUID(),
       now: () => fixedNow ?? new Date(),
     },

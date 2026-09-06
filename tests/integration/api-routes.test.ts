@@ -282,6 +282,8 @@ describeIntegration("v1 API routes", () => {
       clerk,
       guardianRoleKey: "org:guardian",
       invitationRedirectUrl: `${ORIGIN}/accept-invitation`,
+      storage: null,
+      jobsDb: null,
       now: () => new Date(),
       close: () => api.close(),
     };

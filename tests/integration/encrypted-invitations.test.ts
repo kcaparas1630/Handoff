@@ -85,6 +85,8 @@ describeIntegration("encrypted invitation lookup", () => {
       clerk,
       guardianRoleKey: "org:guardian",
       invitationRedirectUrl: "https://handoff.test/accept-invitation",
+      storage: null,
+      jobsDb: null,
       requestId: randomUUID(),
       now: () => new Date(),
     };

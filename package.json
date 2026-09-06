@@ -19,6 +19,8 @@
     "dev:parents": "pnpm --filter @handoff/parents start",
     "dev:daycare": "pnpm --filter @handoff/daycare start",
     "dev:api": "pnpm --filter @handoff/api dev",
+    "dev:worker": "pnpm --filter @handoff/worker start",
+    "storage:provision": "tsx scripts/provision-storage.ts",
     "build:api": "pnpm --filter @handoff/api export"
   },
   "devDependencies": {

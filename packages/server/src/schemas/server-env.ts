@@ -18,6 +18,31 @@ const absoluteUrl = (name: string) =>
     .min(1, `${name} must not be empty`)
     .refine(isAbsoluteUrl, `${name} must be an absolute URL`);
 
+/** A blank line in a copied `.env.example` means "not configured", not "configured as empty". */
+function blankToUndefined(value: unknown): unknown {
+  return typeof value === "string" && value.trim() === "" ? undefined : value;
+}
+
+const optionalSetting = (name: string) =>
+  z.preprocess(blankToUndefined, z.string().min(1, `${name} must not be empty`).optional());
+
+const optionalUrl = (name: string) =>
+  z.preprocess(
+    blankToUndefined,
+    z.string().refine(isAbsoluteUrl, `${name} must be an absolute URL`).optional(),
+  );
+
+const optionalCount = (name: string, max: number) =>
+  z.preprocess(
+    blankToUndefined,
+    z.coerce
+      .number({ error: `${name} must be a whole number` })
+      .int()
+      .min(1)
+      .max(max)
+      .optional(),
+  );
+
 /** An empty or whitespace-only setting is treated as absent rather than as "accept nothing". */
 function splitAuthorizedParties(value: string | undefined): string[] | null {
   if (value === undefined) return null;
@@ -27,6 +52,12 @@ function splitAuthorizedParties(value: string | undefined): string[] | null {
     .filter((party) => party !== "");
   return parties.length === 0 ? null : parties;
 }
+
+const DEFAULT_TRANSCRIPTION_MODEL_ID = "nova-3";
+const DEFAULT_ANTHROPIC_MODEL_ID = "claude-opus-5";
+// Milestone 3 starts at two concurrent jobs with measured timeouts (roadmap logic boundaries).
+const DEFAULT_WORKER_CONCURRENCY = 2;
+const DEFAULT_WORKER_LEASE_SECONDS = 120;
 
 const rawServerEnvSchema = z.object({
   NODE_ENV: z.string().optional(),
@@ -42,6 +73,19 @@ const rawServerEnvSchema = z.object({
   PII_KMS_KEY_ID: z.string().min(1).optional(),
   AWS_REGION: z.string().min(1).optional(),
   PII_DEV_WRAPPING_KEY_B64: z.string().min(1).optional(),
+  // Storage, transcription, extraction, and queue settings stay optional so the API can boot for
+  // health checks and manual entry without them; the use cases that need them ask explicitly.
+  SUPABASE_URL: optionalUrl("SUPABASE_URL"),
+  SUPABASE_STORAGE_SECRET_KEY: optionalSetting("SUPABASE_STORAGE_SECRET_KEY"),
+  SUPABASE_STORAGE_BUCKET: optionalSetting("SUPABASE_STORAGE_BUCKET"),
+  DEEPGRAM_API_KEY: optionalSetting("DEEPGRAM_API_KEY"),
+  TRANSCRIPTION_MODEL_ID: optionalSetting("TRANSCRIPTION_MODEL_ID"),
+  ANTHROPIC_API_KEY: optionalSetting("ANTHROPIC_API_KEY"),
+  ANTHROPIC_MODEL_ID: optionalSetting("ANTHROPIC_MODEL_ID"),
+  // The queue credential. Claiming a job is not a capability of the mobile API credential.
+  DATABASE_JOB_DISPATCH_URL: optionalSetting("DATABASE_JOB_DISPATCH_URL"),
+  WORKER_CONCURRENCY: optionalCount("WORKER_CONCURRENCY", 16),
+  WORKER_LEASE_SECONDS: optionalCount("WORKER_LEASE_SECONDS", 3600),
   INVITATION_REDIRECT_URL: absoluteUrl("INVITATION_REDIRECT_URL"),
   APP_LINK_PARENTS: absoluteUrl("APP_LINK_PARENTS"),
   APP_LINK_DAYCARE: absoluteUrl("APP_LINK_DAYCARE"),
@@ -100,4 +144,15 @@ export const serverEnvSchema = rawServerEnvSchema
     piiKmsKeyId: value.PII_KMS_KEY_ID ?? null,
     awsRegion: value.AWS_REGION ?? null,
     piiDevWrappingKeyB64: value.PII_DEV_WRAPPING_KEY_B64 ?? null,
+    supabaseUrl: value.SUPABASE_URL ?? null,
+    supabaseStorageSecretKey: value.SUPABASE_STORAGE_SECRET_KEY ?? null,
+    supabaseStorageBucket: value.SUPABASE_STORAGE_BUCKET ?? null,
+    deepgramApiKey: value.DEEPGRAM_API_KEY ?? null,
+    // Pinned supported model ids; a change is promoted only after the extraction evaluation.
+    transcriptionModelId: value.TRANSCRIPTION_MODEL_ID ?? DEFAULT_TRANSCRIPTION_MODEL_ID,
+    anthropicApiKey: value.ANTHROPIC_API_KEY ?? null,
+    anthropicModelId: value.ANTHROPIC_MODEL_ID ?? DEFAULT_ANTHROPIC_MODEL_ID,
+    databaseJobDispatchUrl: value.DATABASE_JOB_DISPATCH_URL ?? null,
+    workerConcurrency: value.WORKER_CONCURRENCY ?? DEFAULT_WORKER_CONCURRENCY,
+    workerLeaseSeconds: value.WORKER_LEASE_SECONDS ?? DEFAULT_WORKER_LEASE_SECONDS,
   }));

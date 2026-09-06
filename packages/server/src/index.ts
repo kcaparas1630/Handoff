@@ -38,12 +38,41 @@ export type {
   WrappingContext,
 } from "./types/encryption";
 
-export { loadServerEnv, ServerEnvError } from "./config/env";
+export { loadServerEnv, requireStorageEnv, requireWorkerEnv, ServerEnvError } from "./config/env";
+export type { StorageEnv, WorkerEnv } from "./config/env";
 export { serverEnvSchema } from "./schemas/server-env";
 export type { PiiKeyProvider, ServerEnv } from "./types/server-env";
 
-export { createRequestDeps, createServerRuntime } from "./runtime";
-export type { ServerRuntime, ServiceDeps } from "./types/runtime";
+export { createRequestDeps, createServerRuntime, createWorkerRuntime } from "./runtime";
+export type { ServerRuntime, ServiceDeps, WorkerRuntime } from "./types/runtime";
+
+export { createSupabaseStorage } from "./storage/supabase-storage";
+export type {
+  ObjectStorage,
+  StoredObjectHead,
+  UploadAuthorizationRequest,
+  UploadAuthorizationResult,
+} from "./storage/object-storage";
+export { createDeepgramTranscription } from "./transcription/deepgram";
+export type {
+  TranscriptionProvider,
+  TranscriptionRequest,
+  TranscriptionResult,
+} from "./transcription/provider";
+export { createAnthropicExtraction } from "./ai/anthropic";
+export type { ExtractionProvider, ExtractionResult } from "./ai/extract-events";
+export { PROMPT_VERSION } from "./ai/prompts/extract-events-v1";
+export { validateExtractionSemantics } from "./ai/lib/validate-extraction";
+export { buildDraftCandidates } from "./jobs/lib/draft-candidates";
+export { ProviderError } from "./lib/provider-error";
+export type { ProviderErrorCode } from "./lib/provider-error";
+export { buildObjectKey, objectExtensionForMime } from "./lib/object-key";
+
+export { createJobRunner } from "./jobs/runner";
+export { processCapture } from "./jobs/process-capture";
+export { reconcileClerk, scheduleReconciliation } from "./jobs/reconcile-clerk";
+export { cleanupAudio, scheduleAudioCleanup } from "./jobs/cleanup-audio";
+export type { JobContext, JobHandler, JobOutcome, JobRunner, JobRunnerOptions } from "./types/jobs";
 
 export { ApiHttpError, toErrorResponse } from "./http/errors";
 export { createHandler } from "./http/handler";
@@ -91,6 +120,12 @@ export {
   resolveInvitationWorkspace,
 } from "./services/workspace-lookup";
 export { createCapture, getCapture, updateCaptureDraft } from "./services/captures";
+export { completeUpload, retryCapture } from "./services/uploads";
+export {
+  cleanupAudioDedupeKey,
+  processCaptureDedupeKey,
+  reconcileClerkDedupeKey,
+} from "./services/job-keys";
 export { confirmCapture } from "./services/capture-confirmation";
 export { correctEvent, deleteEvent, getEvent, listEvents } from "./services/events";
 export { endCare, listCare, startCare } from "./services/care";

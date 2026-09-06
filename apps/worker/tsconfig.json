@@ -1,0 +1,10 @@
+{
+  "extends": "../../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "paths": {
+      "@handoff/*": ["../../packages/*/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

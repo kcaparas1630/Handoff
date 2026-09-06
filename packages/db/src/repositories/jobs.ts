@@ -189,6 +189,32 @@ export async function failJob(tx: HandoffTransaction, input: JobFailure): Promis
 }
 
 /**
+ * A caregiver asking to retry a visibly failed capture. Only a `failed` row matches, so this can
+ * never resurrect a succeeded or cancelled job, and the attempt budget starts again because the
+ * user made a new decision. Successful checkpoints stay, which is what lets the retry skip work
+ * the first attempt already finished.
+ */
+export async function requeueFailedJob(
+  tx: HandoffTransaction,
+  input: { jobId: string; availableAt: Date },
+): Promise<JobRow | null> {
+  const [row] = await tx
+    .update(jobs)
+    .set({
+      status: "queued",
+      attempts: 0,
+      availableAt: input.availableAt,
+      leaseToken: null,
+      leaseExpiresAt: null,
+      lastErrorCode: null,
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(jobs.id, input.jobId), eq(jobs.status, "failed")))
+    .returning();
+  return row ?? null;
+}
+
+/**
  * Discarding a capture stops its queued work. Unlike the calls above this is not a lease holder,
  * so it clears the token: a worker mid-attempt then fails every write it tries afterwards.
  */

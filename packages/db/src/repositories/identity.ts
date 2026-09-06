@@ -49,6 +49,15 @@ export async function findWorkspaceByClerkOrgId(
 }
 
 /** The caller allocates the workspace id so it can open the tenant transaction that inserts it. */
+/** Reads one workspace inside its own tenant transaction; the queue reaches it by job id only. */
+export async function findWorkspaceById(
+  tx: HandoffTransaction,
+  workspaceId: string,
+): Promise<WorkspaceRow | null> {
+  const [row] = await tx.select().from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1);
+  return row ?? null;
+}
+
 export async function insertWorkspace(
   tx: HandoffTransaction,
   input: NewWorkspace,

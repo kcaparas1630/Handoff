@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { captures } from "../schema";
 import type { HandoffTransaction } from "../types/database";
 import type {
@@ -77,6 +77,28 @@ export async function listCapturesForChild(
       ),
     )
     .orderBy(desc(captures.createdAt), desc(captures.id))
+    .limit(input.limit);
+}
+
+/**
+ * Recordings the caregiver never finished reviewing. Retention marks these for cleanup after a
+ * fixed interval (architecture section 6); the sweep runs per workspace under tenant isolation.
+ */
+export async function listUnconfirmedCapturesBefore(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; before: Date; limit: number },
+): Promise<CaptureRow[]> {
+  return tx
+    .select()
+    .from(captures)
+    .where(
+      and(
+        eq(captures.workspaceId, input.workspaceId),
+        inArray(captures.status, pendingStatuses),
+        lt(captures.createdAt, input.before),
+      ),
+    )
+    .orderBy(asc(captures.createdAt), asc(captures.id))
     .limit(input.limit);
 }
 

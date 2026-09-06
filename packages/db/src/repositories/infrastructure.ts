@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { auditLog, idempotencyRequests, webhookInbox } from "../schema";
 import type { HandoffTransaction } from "../types/database";
 import type {
@@ -60,6 +60,22 @@ export async function markWebhookProcessed(
     .update(webhookInbox)
     .set({ status: "processed", processedAt: sql`now()` })
     .where(and(eq(webhookInbox.provider, provider), eq(webhookInbox.eventId, eventId)));
+}
+
+/**
+ * Audit rows that record a provider call we could not complete, so a bounded reconciliation can
+ * retry it. Ordered oldest first; the caller enqueues one job per row, keyed by that row's id.
+ */
+export async function listAuditLogByActions(
+  tx: HandoffTransaction,
+  input: { actions: string[]; limit: number },
+): Promise<AuditLogRow[]> {
+  return tx
+    .select()
+    .from(auditLog)
+    .where(inArray(auditLog.action, input.actions))
+    .orderBy(asc(auditLog.createdAt), asc(auditLog.id))
+    .limit(input.limit);
 }
 
 export async function insertAuditLog(

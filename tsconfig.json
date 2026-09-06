@@ -5,6 +5,7 @@
     "packages/*/src/**/*.tsx",
     "packages/config/*.ts",
     "packages/config/*.d.ts",
+    "scripts/**/*.ts",
     "tests/**/*.ts",
     "vitest.config.ts"
   ]
