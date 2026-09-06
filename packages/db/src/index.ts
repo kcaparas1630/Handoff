@@ -16,6 +16,11 @@ export * as identityRepository from "./repositories/identity";
 export * as childrenRepository from "./repositories/children";
 export * as invitationsRepository from "./repositories/invitations";
 export * as infrastructureRepository from "./repositories/infrastructure";
+export * as capturesRepository from "./repositories/captures";
+export * as eventsRepository from "./repositories/events";
+export * as careRepository from "./repositories/care";
+export * as handoffsRepository from "./repositories/handoffs";
+export * as overviewRepository from "./repositories/overview";
 export { createDataKeyStore } from "./repositories/data-keys";
 
 export type { HandoffDatabase, HandoffTransaction } from "./types/database";
@@ -29,11 +34,19 @@ export type {
 } from "./types/data-keys";
 export type {
   AppRole,
+  BriefStatus,
+  CaptureInputKind,
+  CaptureStatus,
+  CareEndReason,
   CaregiverRelationship,
   ChildPermission,
   ChildStatus,
+  EventKind,
+  EventStatus,
   InvitationStatus,
   MembershipStatus,
+  RevisionOperation,
+  TimePrecision,
 } from "./types/enums";
 export type {
   MembershipWithWorkspace,
@@ -66,3 +79,27 @@ export type {
   NewWebhookInboxEntry,
   WebhookInboxRow,
 } from "./types/infrastructure";
+export type {
+  AppendRevisionInput,
+  CaptureDraftUpdate,
+  CaptureRow,
+  CaptureStatusUpdate,
+  EventCursor,
+  EventPatch,
+  EventRevisionRow,
+  EventRow,
+  ListEventsQuery,
+  NewCapture,
+  NewEvent,
+  NewEventRevision,
+} from "./types/journal";
+export type {
+  AdvanceCursor,
+  CareSessionRow,
+  HandoffBriefRow,
+  HandoffCursorRow,
+  NewHandoffBrief,
+  OverviewMetadata,
+  StartCareSession,
+  StartedCareSession,
+} from "./types/care";

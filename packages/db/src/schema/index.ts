@@ -4,3 +4,5 @@ export { dataKeys } from "./data-keys";
 export { children, childCaregivers } from "./children";
 export { invitationIntents, invitationChildGrants } from "./invitations";
 export { idempotencyRequests, webhookInbox, auditLog } from "./infrastructure";
+export { captures, events, eventRevisions } from "./journal";
+export { careSessions, handoffBriefs, handoffCursors } from "./care";

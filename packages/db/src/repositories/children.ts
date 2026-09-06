@@ -1,5 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
-import { childCaregivers, children } from "../schema";
+import { childCaregivers, children, workspaceMemberships } from "../schema";
 import type {
   ChildCaregiverRow,
   ChildProfileUpdate,
@@ -24,6 +24,34 @@ export async function findChildInWorkspace(
     .select()
     .from(children)
     .where(and(eq(children.workspaceId, workspaceId), eq(children.id, childId)))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Resolves which workspace a child belongs to before any tenant context exists, for requests
+ * that name a child but no workspace. Runs in an identity transaction with `handoff.user_id`
+ * set; the `children_identity_lookup` policy answers only for a caller with an active membership
+ * in that child's workspace. Membership is not child permission: the service still checks the
+ * grant after opening the tenant transaction.
+ */
+export async function findChildWorkspaceForMember(
+  tx: HandoffTransaction,
+  userId: string,
+  childId: string,
+): Promise<{ workspaceId: string } | null> {
+  const [row] = await tx
+    .select({ workspaceId: children.workspaceId })
+    .from(children)
+    .innerJoin(
+      workspaceMemberships,
+      and(
+        eq(workspaceMemberships.workspaceId, children.workspaceId),
+        eq(workspaceMemberships.userId, userId),
+        eq(workspaceMemberships.status, "active"),
+      ),
+    )
+    .where(eq(children.id, childId))
     .limit(1);
   return row ?? null;
 }

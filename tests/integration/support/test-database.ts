@@ -2,6 +2,13 @@ import { randomUUID } from "node:crypto";
 import { URL } from "node:url";
 import postgres from "postgres";
 import { runMigrations } from "../../../packages/db/src/migrate";
+import * as childrenRepository from "../../../packages/db/src/repositories/children";
+import * as identityRepository from "../../../packages/db/src/repositories/identity";
+import {
+  withIdentityTransaction,
+  withTenantTransaction,
+} from "../../../packages/db/src/tenant-transaction";
+import type { HandoffDatabase } from "../../../packages/db/src/types/database";
 
 // Restricted login role used by the pooled tests. It inherits handoff_api, so row-level security
 // applies to it; connecting as the superuser would bypass every policy and prove nothing.
@@ -105,4 +112,102 @@ export function syntheticEnvelope(label: string): SyntheticEnvelope {
     ciphertext: Buffer.from(label).toString("base64"),
     tag: "AAAAAAAAAAAAAAAAAAAAAA==",
   };
+}
+
+export interface SeededTenant {
+  workspaceId: string;
+  childId: string;
+  userId: string;
+}
+
+/**
+ * One workspace with an owner and a child, the smallest fixture a journal or care test needs.
+ * Labels only have to be unique inside a test file; they become the synthetic Clerk ids.
+ */
+export async function seedTenant(db: HandoffDatabase, label: string): Promise<SeededTenant> {
+  const workspaceId = randomUUID();
+  const userId = await seedUser(db, label);
+  await withTenantTransaction(db, { workspaceId }, async (tx) => {
+    await identityRepository.insertWorkspace(tx, {
+      id: workspaceId,
+      clerkOrgId: `org_${label}`,
+      kind: "daycare",
+      profileCiphertext: syntheticEnvelope(`workspace-${label}`),
+      timezone: "America/Vancouver",
+      storageBudgetBytes: 1_000_000,
+    });
+    await identityRepository.upsertMembership(tx, {
+      workspaceId,
+      userId,
+      clerkMembershipId: `orgmem_${label}`,
+      appRole: "owner",
+      status: "active",
+      providerVerifiedAt: new Date(),
+    });
+  });
+  return { workspaceId, childId: await seedChild(db, workspaceId, userId, label), userId };
+}
+
+export async function seedUser(db: HandoffDatabase, label: string): Promise<string> {
+  const user = await withIdentityTransaction(db, {}, (tx) =>
+    identityRepository.upsertUserByClerkId(tx, {
+      clerkUserId: `user_${label}`,
+      profileCiphertext: syntheticEnvelope(`user-${label}`),
+    }),
+  );
+  return user.id;
+}
+
+/** Adds a second caregiver to an existing workspace so concurrency tests have two actors. */
+export async function seedMember(
+  db: HandoffDatabase,
+  workspaceId: string,
+  label: string,
+): Promise<string> {
+  const userId = await seedUser(db, label);
+  await withTenantTransaction(db, { workspaceId }, (tx) =>
+    identityRepository.upsertMembership(tx, {
+      workspaceId,
+      userId,
+      clerkMembershipId: `orgmem_${label}`,
+      appRole: "caregiver",
+      status: "active",
+      providerVerifiedAt: new Date(),
+    }),
+  );
+  return userId;
+}
+
+export async function seedChild(
+  db: HandoffDatabase,
+  workspaceId: string,
+  createdByUserId: string,
+  label: string,
+): Promise<string> {
+  const childId = randomUUID();
+  await withTenantTransaction(db, { workspaceId }, (tx) =>
+    childrenRepository.insertChild(tx, {
+      id: childId,
+      workspaceId,
+      profileCiphertext: syntheticEnvelope(`child-${label}`),
+      createdByUserId,
+    }),
+  );
+  return childId;
+}
+
+/** Drizzle wraps driver errors, so constraint assertions have to read the whole cause chain. */
+export async function failureMessage(run: () => Promise<unknown>): Promise<string> {
+  try {
+    await run();
+  } catch (error) {
+    const messages: string[] = [];
+    let current: unknown = error;
+    while (current instanceof Error) {
+      messages.push(current.message);
+      current = current.cause;
+    }
+    return messages.join(" | ");
+  }
+  throw new Error("expected the operation to fail");
 }

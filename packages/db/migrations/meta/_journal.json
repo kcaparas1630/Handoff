@@ -15,6 +15,20 @@
       "when": 1788719641885,
       "tag": "0001_access",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788725252694,
+      "tag": "0002_journal_and_care",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788725337558,
+      "tag": "0003_journal_access",
+      "breakpoints": true
     }
   ]
 }

@@ -63,3 +63,50 @@ export const webhookStatus = handoffSchema.enum("webhook_status", [
   "processed",
   "failed",
 ]);
+
+export const captureInputKind = handoffSchema.enum("capture_input_kind", [
+  "audio",
+  "text",
+  "manual",
+]);
+
+export const captureStatus = handoffSchema.enum("capture_status", [
+  "awaiting_upload",
+  "queued",
+  "processing",
+  "needs_review",
+  "confirmed",
+  "failed",
+  "cancelled",
+]);
+
+export const eventKind = handoffSchema.enum("event_kind", [
+  "feed",
+  "diaper",
+  "sleep",
+  "milestone",
+  "note",
+]);
+
+export const timePrecision = handoffSchema.enum("time_precision", [
+  "exact",
+  "approximate",
+  "unknown",
+]);
+
+export const eventStatus = handoffSchema.enum("event_status", ["active", "deleted"]);
+
+export const revisionOperation = handoffSchema.enum("revision_operation", [
+  "created",
+  "corrected",
+  "deleted",
+  "media_updated",
+]);
+
+export const careEndReason = handoffSchema.enum("care_end_reason", [
+  "user_ended",
+  "membership_revoked",
+  "child_archived",
+]);
+
+export const briefStatus = handoffSchema.enum("brief_status", ["ready", "invalidated", "redacted"]);
