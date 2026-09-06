@@ -100,6 +100,8 @@ export const eventDtoSchema = z.object({
   updatedAt: z.iso.datetime(),
   currentRevisionId: z.uuid(),
   sourceQuote: z.string().nullable(),
+  // Ready image/video attachments published on this event's current revision; empty until then.
+  readyAssetIds: z.array(z.uuid()).default([]),
 });
 
 // Partial correction. Omitted fields keep their stored value; an explicit null clears one.

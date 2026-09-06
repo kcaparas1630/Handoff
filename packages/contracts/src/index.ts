@@ -96,6 +96,10 @@ export {
   mediaKindSchema,
   mediaStatusSchema,
   uploadAuthorizationSchema,
+  attachmentKindSchema,
+  assetReadResponseSchema,
+  createAssetUploadRequestSchema,
+  createAssetUploadResponseSchema,
 } from "./schemas/media";
 export {
   AUDIO_MAX_BYTES,
@@ -213,7 +217,16 @@ export type {
   ExtractionProvenance,
   SpokenTimeComponents,
 } from "./types/extraction";
-export type { MediaAssetDto, MediaKind, MediaStatus, UploadAuthorization } from "./types/media";
+export type {
+  AssetReadResponse,
+  AttachmentKind,
+  CreateAssetUploadRequest,
+  CreateAssetUploadResponse,
+  MediaAssetDto,
+  MediaKind,
+  MediaStatus,
+  UploadAuthorization,
+} from "./types/media";
 export type {
   CareActionRequest,
   CareListResponse,

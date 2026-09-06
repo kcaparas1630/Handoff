@@ -43,3 +43,30 @@ export const uploadAuthorizationSchema = z.object({
   expiresAt: z.iso.datetime(),
   maxBytes: z.int().positive(),
 });
+
+// Image and video attachments ride on an existing capture; audio is created with the capture.
+export const attachmentKindSchema = z.enum(["image", "video"]);
+
+export const createAssetUploadRequestSchema = z
+  .object({
+    kind: attachmentKindSchema,
+    declaredMime: z.string().trim().min(1).max(100),
+    declaredSizeBytes: z.int().positive(),
+    declaredDurationMs: z.int().positive().optional(),
+  })
+  .refine((value) => value.kind !== "video" || value.declaredDurationMs !== undefined, {
+    path: ["declaredDurationMs"],
+    message: "A video upload must declare its duration",
+  });
+
+export const createAssetUploadResponseSchema = z.object({
+  asset: mediaAssetDtoSchema,
+  upload: uploadAuthorizationSchema,
+});
+
+// Issued at request time after fresh authorization; the URL is never stored or replayed.
+export const assetReadResponseSchema = z.object({
+  asset: mediaAssetDtoSchema,
+  url: z.url({ protocol: /^https$/ }),
+  expiresAt: z.iso.datetime(),
+});

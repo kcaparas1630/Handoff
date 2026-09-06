@@ -22,6 +22,7 @@ export const briefEntrySchema = z.object({
   reportedAt: z.iso.datetime(),
   authorDisplayName: z.string().nullable(),
   important: z.boolean(),
+  readyAssetIds: z.array(z.uuid()).default([]),
 });
 
 // Latest-known care shown as labeled context. It is not counted as a new update.
