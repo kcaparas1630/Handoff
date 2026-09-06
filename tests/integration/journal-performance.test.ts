@@ -6,7 +6,7 @@ import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withTenantTransaction } from "../../packages/db/src/tenant-transaction";
 import { acknowledgeBrief } from "../../packages/server/src/services/handoff-acknowledgement";
-import { listInitialWindowRevisions } from "../../packages/server/src/services/journal-queries";
+import { listInitialWindowRevisions } from "../../packages/db/src/repositories/events";
 import { confirmCapture } from "../../packages/server/src/services/capture-confirmation";
 import { createCapture } from "../../packages/server/src/services/captures";
 import { listEvents } from "../../packages/server/src/services/events";

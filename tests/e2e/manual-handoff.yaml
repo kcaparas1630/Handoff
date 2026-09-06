@@ -1,0 +1,168 @@
+# UNEXECUTED. This flow has never been run: milestone 2 had no device, simulator, or Clerk
+# development instance available. Treat it as a reviewed script, not as passing evidence.
+#
+# Requirements before the first run:
+#   - Both builds installed on one device: com.handoff.parents (caregiver A) and
+#     com.handoff.daycare (caregiver B). The flow switches between them with launchApp.
+#   - A Clerk development instance. Both addresses must be Clerk test addresses (`+clerk_test`),
+#     whose emailed code is the fixed test code in SIGN_IN_CODE. No real child or caregiver data
+#     belongs in this file.
+#   - An already-seeded workspace containing CHILD_NAME, where A is the owner and B holds an
+#     active contributor grant for that child. This flow records care; it does not onboard.
+#     `tests/e2e/onboarding-invitation.yaml` covers workspace and invitation setup.
+#   - Both builds pointed at one running API and a disposable database.
+#   - `maestro test tests/e2e/manual-handoff.yaml`.
+#
+# Every selector below is a testID that exists in packages/features or packages/ui today, or the
+# accessible label of a choice chip. Chips carry no per-option testID, so they are tapped by
+# their label. Event cards carry a per-event testID whose id is not known in advance, so entries
+# are matched by their rendered template text instead.
+
+appId: com.handoff.parents
+env:
+  A_EMAIL: "handoff.parent+clerk_test@example.com"
+  B_EMAIL: "handoff.daycare+clerk_test@example.com"
+  SIGN_IN_CODE: "424242"
+  CHILD_NAME: "Rowan"
+  FEED_AMOUNT: "60"
+  CORRECTED_AMOUNT: "90"
+  MILESTONE: "Said a new word"
+---
+# ── Caregiver A: log a feed and a milestone, and say they are caring ──────────────────
+- launchApp:
+    appId: "com.handoff.parents"
+    clearState: true
+
+- assertVisible:
+    id: "sign-in-email"
+- tapOn:
+    id: "sign-in-email"
+- inputText: "${A_EMAIL}"
+- tapOn:
+    id: "sign-in-send-code"
+- tapOn:
+    id: "sign-in-code"
+- inputText: "${SIGN_IN_CODE}"
+- tapOn:
+    id: "sign-in-verify"
+
+- assertVisible: "Your children"
+- tapOn: "${CHILD_NAME}"
+- assertVisible:
+    id: "care-dashboard"
+
+# A feed with a measured amount. The unit is explicit; an empty amount is never stored as zero.
+- tapOn:
+    id: "quick-care-feed"
+- assertVisible: "Add a feed"
+- tapOn: "Bottle"
+- tapOn:
+    id: "feed-amount"
+- inputText: "${FEED_AMOUNT}"
+- tapOn: "ml"
+- tapOn: "Now"
+- tapOn:
+    id: "entry-save"
+- assertVisible: "Saved: Fed ${FEED_AMOUNT} ml"
+
+# Milestone lives behind "More", so the four primary actions stay large and reachable.
+- scrollUntilVisible:
+    element:
+      text: "More"
+    direction: DOWN
+- tapOn: "More"
+- tapOn:
+    id: "quick-care-milestone"
+- assertVisible: "Add a milestone"
+- tapOn:
+    id: "milestone-description"
+- inputText: "${MILESTONE}"
+- tapOn: "Now"
+- tapOn:
+    id: "entry-save"
+- assertVisible: "Saved: Milestone: ${MILESTONE}"
+
+# A says they are caring. Several caregivers may be active at once, so this ends nobody else.
+- scrollUntilVisible:
+    element:
+      id: "care-status-action"
+    direction: DOWN
+- tapOn:
+    id: "care-status-action"
+- assertVisible: "You said you are caring for this child."
+
+# ── Caregiver B: read the handoff, acknowledge it, and start their own care ───────────
+- launchApp:
+    appId: "com.handoff.daycare"
+    clearState: true
+
+- assertVisible:
+    id: "sign-in-email"
+- tapOn:
+    id: "sign-in-email"
+- inputText: "${B_EMAIL}"
+- tapOn:
+    id: "sign-in-send-code"
+- tapOn:
+    id: "sign-in-code"
+- inputText: "${SIGN_IN_CODE}"
+- tapOn:
+    id: "sign-in-verify"
+
+- tapOn: "${CHILD_NAME}"
+- assertVisible:
+    id: "care-dashboard"
+# A's session is visible to B; the dashboard read does not acknowledge anything.
+- assertVisible: "is caring"
+
+- tapOn:
+    id: "handoff-card-open"
+- assertVisible:
+    id: "handoff-screen"
+- assertVisible: "Fed ${FEED_AMOUNT} ml"
+- assertVisible: "${MILESTONE}"
+
+# Acknowledging and starting care are one server transaction, so B's session opens with it.
+- tapOn:
+    id: "handoff-acknowledge-start"
+- assertVisible:
+    id: "care-dashboard"
+- scrollUntilVisible:
+    element:
+      text: "You said you are caring for this child."
+    direction: DOWN
+- assertVisible: "You said you are caring for this child."
+
+# ── Caregiver A: correct the feed amount ─────────────────────────────────────────────
+- launchApp:
+    appId: "com.handoff.parents"
+- assertVisible:
+    id: "care-dashboard"
+# The latest-known feed tile opens the entry it cites.
+- tapOn:
+    id: "care-snapshot-feed"
+- assertVisible:
+    id: "event-editor"
+- tapOn:
+    id: "feed-amount"
+- eraseText
+- inputText: "${CORRECTED_AMOUNT}"
+- tapOn:
+    id: "event-editor-correct"
+- assertVisible:
+    id: "care-dashboard"
+- assertVisible: "Fed ${CORRECTED_AMOUNT} ml"
+
+# ── Caregiver B: the correction arrives as a new, unread update ──────────────────────
+- launchApp:
+    appId: "com.handoff.daycare"
+- assertVisible:
+    id: "care-dashboard"
+- tapOn:
+    id: "handoff-card-open"
+- assertVisible:
+    id: "handoff-screen"
+# A correction publishes a revision rather than rewriting the acknowledged one, so this brief
+# starts after B's cursor and carries the change tagged as an update.
+- assertVisible: "Fed ${CORRECTED_AMOUNT} ml"
+- assertVisible: "Updated"

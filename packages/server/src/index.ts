@@ -49,7 +49,6 @@ export { ApiHttpError, toErrorResponse } from "./http/errors";
 export { createHandler } from "./http/handler";
 export { inTenantTransaction } from "./lib/in-tenant-transaction";
 export type { ScopedTransaction } from "./lib/in-tenant-transaction";
-export { withTenantTransactionOptions } from "./lib/tenant-transaction-options";
 export { decodeEventCursor, encodeEventCursor } from "./lib/event-cursor";
 export { runIdempotent } from "./http/idempotency";
 export type { IdempotentResult } from "./http/idempotency";

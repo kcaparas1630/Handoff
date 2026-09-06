@@ -6,8 +6,18 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as acceptInvitationRoute from "../../apps/api/src/app/accept-invitation+api";
 import * as bootstrapRoute from "../../apps/api/src/app/v1/bootstrap+api";
+import * as confirmCaptureRoute from "../../apps/api/src/app/v1/captures/[captureId]/confirm+api";
+import * as captureRoute from "../../apps/api/src/app/v1/captures/[captureId]/index+api";
+import * as capturesRoute from "../../apps/api/src/app/v1/captures/index+api";
+import * as careRoute from "../../apps/api/src/app/v1/children/[childId]/care+api";
 import * as caregiversRoute from "../../apps/api/src/app/v1/children/[childId]/caregivers+api";
+import * as childEventsRoute from "../../apps/api/src/app/v1/children/[childId]/events+api";
+import * as childHandoffsRoute from "../../apps/api/src/app/v1/children/[childId]/handoffs+api";
 import * as childRoute from "../../apps/api/src/app/v1/children/[childId]/index+api";
+import * as overviewRoute from "../../apps/api/src/app/v1/children/[childId]/overview+api";
+import * as eventRoute from "../../apps/api/src/app/v1/events/[eventId]+api";
+import * as acknowledgeRoute from "../../apps/api/src/app/v1/handoffs/[briefId]/acknowledge+api";
+import * as briefRoute from "../../apps/api/src/app/v1/handoffs/[briefId]/index+api";
 import * as healthRoute from "../../apps/api/src/app/v1/health+api";
 import * as webhookRoute from "../../apps/api/src/app/v1/webhooks/clerk+api";
 import * as workspaceChildrenRoute from "../../apps/api/src/app/v1/workspaces/[workspaceId]/children+api";
@@ -15,10 +25,19 @@ import * as workspaceInvitationsRoute from "../../apps/api/src/app/v1/workspaces
 import * as workspacesRoute from "../../apps/api/src/app/v1/workspaces/index+api";
 import { overrideRuntimeForTests } from "../../apps/api/src/server-runtime";
 import {
+  acknowledgeBriefResponseSchema,
   bootstrapResponseSchema,
+  captureDtoSchema,
+  careListResponseSchema,
+  careSessionDtoSchema,
   childDtoSchema,
+  confirmCaptureResponseSchema,
   cursorPage,
+  eventDtoSchema,
+  eventsPageSchema,
+  handoffBriefDtoSchema,
   invitationDtoSchema,
+  overviewDtoSchema,
   workspaceDtoSchema,
 } from "../../packages/contracts/src/index";
 import { createDbClient } from "../../packages/db/src/client";
@@ -29,6 +48,7 @@ import { createRequestDeps } from "../../packages/server/src/runtime";
 import { createChild } from "../../packages/server/src/services/children";
 import { createDataKeyService } from "../../packages/server/src/security/encryption/data-keys";
 import { createDevelopmentKeyWrapper } from "../../packages/server/src/security/encryption/development-key-wrapper";
+import type { OverviewDto } from "../../packages/contracts/src/index";
 import type { DbClient } from "../../packages/db/src/client";
 import type { ServerRuntime } from "../../packages/server/src/types/runtime";
 import type { FakeClerkGateway } from "./support/fake-clerk-gateway";
@@ -42,6 +62,8 @@ if (!process.env.DATABASE_URL)
 
 const ORIGIN = "https://api.handoff.test";
 const OWNER_TOKEN = "user_route_owner";
+const RECIPIENT_TOKEN = "user_route_recipient";
+const READER_TOKEN = "user_route_reader";
 const OUTSIDER_TOKEN = "user_route_outsider";
 const OWNER_ORG_ID = "org_route_household";
 const OUTSIDER_ORG_ID = "org_route_outsider";
@@ -85,8 +107,19 @@ describeIntegration("v1 API routes", () => {
   let runtime: ServerRuntime;
 
   let ownerUserId: string;
+  let recipientUserId: string;
+  let readerUserId: string;
   let workspaceId: string;
   let childId: string;
+
+  // The milestone 2 story runs top to bottom, so each step names what the one before it produced.
+  let captureId: string;
+  let feedEventId: string;
+  let briefId: string;
+  const feedCandidateId = randomUUID();
+  const feedOccurredAt = new Date().toISOString();
+  const confirmKey = randomUUID();
+  let capturedDraftVersion = 0;
 
   /** Superuser connection: these counts must see rows regardless of tenant context. */
   async function withAdminSession<T>(run: (session: postgres.Sql) => Promise<T>): Promise<T> {
@@ -154,6 +187,89 @@ describeIntegration("v1 API routes", () => {
     return workspaceDtoSchema.parse(await readBody(response)).id;
   }
 
+  /** Joins the owner's organization as an ordinary member before the local user is created. */
+  async function joinOwnerWorkspace(
+    token: string,
+    email: string,
+    displayName: string,
+  ): Promise<string> {
+    clerk.setMembership({
+      clerkOrgId: OWNER_ORG_ID,
+      clerkUserId: token,
+      clerkMembershipId: `orgmem_${token}`,
+      role: "org:member",
+    });
+    return signIn(token, email, displayName);
+  }
+
+  /** One reviewed manual line: a bottle feed with no measured amount. */
+  function feedCandidate(): Record<string, unknown> {
+    return {
+      id: feedCandidateId,
+      kind: "feed",
+      occurredAt: feedOccurredAt,
+      endedAt: null,
+      timePrecision: "exact",
+      amountValue: null,
+      amountUnit: null,
+      details: { kind: "feed", method: "bottle" },
+      important: false,
+      sourceQuote: null,
+      sourceStart: null,
+      sourceEnd: null,
+      ambiguities: [],
+      discarded: false,
+    };
+  }
+
+  function manualCaptureBody(): string {
+    return JSON.stringify({
+      childId,
+      clientCaptureId: randomUUID(),
+      inputKind: "manual",
+      capturedAt: new Date().toISOString(),
+      timezone: "America/Vancouver",
+      locale: "en-CA",
+      candidates: [feedCandidate()],
+    });
+  }
+
+  function confirmBody(important = false): string {
+    const { sourceStart: _start, sourceEnd: _end, ...reviewed } = feedCandidate();
+    return JSON.stringify({
+      expectedDraftVersion: capturedDraftVersion,
+      candidates: [{ ...reviewed, important }],
+    });
+  }
+
+  async function readOverview(token: string): Promise<OverviewDto> {
+    const response = await overviewRoute.GET(
+      jsonRequest("GET", `/v1/children/${childId}/overview`, { headers: authorized(token) }),
+      { childId },
+    );
+    expect(response.status).toBe(200);
+    return overviewDtoSchema.parse(await readBody(response));
+  }
+
+  async function actOnCare(token: string, action: "start" | "end"): Promise<Response> {
+    return careRoute.POST(
+      jsonRequest("POST", `/v1/children/${childId}/care`, {
+        headers: authorized(token, randomUUID()),
+        body: JSON.stringify({ action }),
+      }),
+      { childId },
+    );
+  }
+
+  async function createBriefFor(token: string): Promise<Response> {
+    return childHandoffsRoute.POST(
+      jsonRequest("POST", `/v1/children/${childId}/handoffs`, {
+        headers: authorized(token, randomUUID()),
+      }),
+      { childId },
+    );
+  }
+
   beforeAll(async () => {
     database = await createTestDatabase();
     api = createDbClient({ url: database.apiUrl, maxConnections: 10 });
@@ -183,6 +299,30 @@ describeIntegration("v1 API routes", () => {
     );
     expect(created.status).toBe(201);
     childId = childDtoSchema.parse(await readBody(created)).id;
+
+    recipientUserId = await joinOwnerWorkspace(
+      RECIPIENT_TOKEN,
+      "route-recipient@example.test",
+      "Route Recipient",
+    );
+    readerUserId = await joinOwnerWorkspace(
+      READER_TOKEN,
+      "route-reader@example.test",
+      "Route Reader",
+    );
+    const granted = await caregiversRoute.PATCH(
+      jsonRequest("PATCH", `/v1/children/${childId}/caregivers`, {
+        headers: authorized(OWNER_TOKEN, randomUUID()),
+        body: JSON.stringify({
+          grants: [
+            { userId: recipientUserId, relationship: "caregiver", permission: "contributor" },
+            { userId: readerUserId, relationship: "relative", permission: "reader" },
+          ],
+        }),
+      }),
+      { childId },
+    );
+    expect(granted.status).toBe(200);
   }, 60_000);
 
   afterAll(async () => {
@@ -501,5 +641,249 @@ describeIntegration("v1 API routes", () => {
     } finally {
       for (const name of Object.keys(configured)) delete process.env[name];
     }
+  });
+
+  it("refuses a reader's manual entry with 403 rather than a 404", async () => {
+    const response = await capturesRoute.POST(
+      jsonRequest("POST", "/v1/captures", {
+        headers: authorized(READER_TOKEN, randomUUID()),
+        body: manualCaptureBody(),
+      }),
+    );
+    expect(response.status).toBe(403);
+    expect((await readBody(response)).code).toBe("forbidden");
+  });
+
+  it("allocates a manual capture holding one reviewed entry", async () => {
+    const response = await capturesRoute.POST(
+      jsonRequest("POST", "/v1/captures", {
+        headers: authorized(OWNER_TOKEN, randomUUID()),
+        body: manualCaptureBody(),
+      }),
+    );
+    expect(response.status).toBe(201);
+    const capture = captureDtoSchema.parse(await readBody(response));
+    expect(capture.status).toBe("needs_review");
+    expect(capture.draft?.candidates.map((entry) => entry.id)).toEqual([feedCandidateId]);
+    captureId = capture.id;
+    capturedDraftVersion = capture.draftVersion;
+  });
+
+  it("confirms that capture into exactly one event", async () => {
+    const response = await confirmCaptureRoute.POST(
+      jsonRequest("POST", `/v1/captures/${captureId}/confirm`, {
+        headers: authorized(OWNER_TOKEN, confirmKey),
+        body: confirmBody(),
+      }),
+      { captureId },
+    );
+    expect(response.status).toBe(200);
+    const confirmed = confirmCaptureResponseSchema.parse(await readBody(response));
+    expect(confirmed.capture.status).toBe("confirmed");
+    expect(confirmed.events).toHaveLength(1);
+    const [event] = confirmed.events;
+    expect(event?.kind).toBe("feed");
+    expect(event?.version).toBe(1);
+    feedEventId = event?.id ?? "";
+  });
+
+  it("replays the same confirmation key onto the same event", async () => {
+    const response = await confirmCaptureRoute.POST(
+      jsonRequest("POST", `/v1/captures/${captureId}/confirm`, {
+        headers: authorized(OWNER_TOKEN, confirmKey),
+        body: confirmBody(),
+      }),
+      { captureId },
+    );
+    expect(response.status).toBe(200);
+    const replayed = confirmCaptureResponseSchema.parse(await readBody(response));
+    expect(replayed.events.map((event) => event.id)).toEqual([feedEventId]);
+  });
+
+  it("rejects that key when the confirmed body differs", async () => {
+    const response = await confirmCaptureRoute.POST(
+      jsonRequest("POST", `/v1/captures/${captureId}/confirm`, {
+        headers: authorized(OWNER_TOKEN, confirmKey),
+        body: confirmBody(true),
+      }),
+      { captureId },
+    );
+    expect(response.status).toBe(409);
+    expect((await readBody(response)).code).toBe("idempotency_key_reused");
+  });
+
+  it("reads the confirmed capture back for its author", async () => {
+    const response = await captureRoute.GET(
+      jsonRequest("GET", `/v1/captures/${captureId}`, { headers: authorized(OWNER_TOKEN) }),
+      { captureId },
+    );
+    expect(response.status).toBe(200);
+    expect(captureDtoSchema.parse(await readBody(response)).confirmedAt).not.toBeNull();
+  });
+
+  it("shows the feed as latest known care, unread for everyone who has not acknowledged", async () => {
+    const forRecipient = await readOverview(RECIPIENT_TOKEN);
+    expect(forRecipient.latest.feed?.eventId).toBe(feedEventId);
+    expect(forRecipient.recentActivity.map((event) => event.id)).toContain(feedEventId);
+    expect(forRecipient.unreadChangeCount).toBe(1);
+
+    // The cursor is per recipient, and the author has acknowledged nothing either, so their own
+    // published change counts as unread for them too until they mark a handoff read.
+    expect((await readOverview(OWNER_TOKEN)).unreadChangeCount).toBe(1);
+  });
+
+  it("pages the confirmed timeline and refuses a cursor it never issued", async () => {
+    const page = await childEventsRoute.GET(
+      jsonRequest("GET", `/v1/children/${childId}/events?kind=feed`, {
+        headers: authorized(RECIPIENT_TOKEN),
+      }),
+      { childId },
+    );
+    expect(page.status).toBe(200);
+    const events = eventsPageSchema.parse(await readBody(page));
+    expect(events.items.map((event) => event.id)).toEqual([feedEventId]);
+    expect(events.nextCursor).toBeNull();
+
+    const rejected = await childEventsRoute.GET(
+      jsonRequest("GET", `/v1/children/${childId}/events?cursor=not-a-cursor`, {
+        headers: authorized(RECIPIENT_TOKEN),
+      }),
+      { childId },
+    );
+    expect(rejected.status).toBe(422);
+    expect((await readBody(rejected)).code).toBe("validation_failed");
+  });
+
+  it("refuses a correction that carries a stale expected version", async () => {
+    const response = await eventRoute.PATCH(
+      jsonRequest("PATCH", `/v1/events/${feedEventId}`, {
+        headers: authorized(OWNER_TOKEN, randomUUID()),
+        body: JSON.stringify({ expectedVersion: 99, amountValue: "90", amountUnit: "ml" }),
+      }),
+      { eventId: feedEventId },
+    );
+    expect(response.status).toBe(409);
+    expect((await readBody(response)).code).toBe("conflict");
+  });
+
+  it("publishes a correction as the event's second version", async () => {
+    const response = await eventRoute.PATCH(
+      jsonRequest("PATCH", `/v1/events/${feedEventId}`, {
+        headers: authorized(OWNER_TOKEN, randomUUID()),
+        body: JSON.stringify({ expectedVersion: 1, amountValue: "90", amountUnit: "ml" }),
+      }),
+      { eventId: feedEventId },
+    );
+    expect(response.status).toBe(200);
+    const corrected = eventDtoSchema.parse(await readBody(response));
+    expect(corrected.version).toBe(2);
+    expect(corrected.amountUnit).toBe("ml");
+  });
+
+  it("opens one care session however many times the recipient asks", async () => {
+    const first = await actOnCare(RECIPIENT_TOKEN, "start");
+    expect(first.status).toBe(200);
+    const session = careSessionDtoSchema.parse(await readBody(first));
+
+    const again = await actOnCare(RECIPIENT_TOKEN, "start");
+    expect(again.status).toBe(200);
+    expect(careSessionDtoSchema.parse(await readBody(again)).id).toBe(session.id);
+
+    const list = await careRoute.GET(
+      jsonRequest("GET", `/v1/children/${childId}/care`, { headers: authorized(OWNER_TOKEN) }),
+      { childId },
+    );
+    expect(list.status).toBe(200);
+    const open = careListResponseSchema.parse(await readBody(list));
+    expect(open.sessions.map((active) => active.id)).toEqual([session.id]);
+  });
+
+  it("ends the caller's own session and then has nothing left to end", async () => {
+    const ended = await actOnCare(RECIPIENT_TOKEN, "end");
+    expect(ended.status).toBe(200);
+    expect(careSessionDtoSchema.parse(await readBody(ended)).endedAt).not.toBeNull();
+
+    const nothing = await actOnCare(RECIPIENT_TOKEN, "end");
+    expect(nothing.status).toBe(404);
+    expect((await readBody(nothing)).code).toBe("not_found");
+  });
+
+  it("creates a brief only its recipient can open", async () => {
+    const created = await createBriefFor(RECIPIENT_TOKEN);
+    expect(created.status).toBe(201);
+    const brief = handoffBriefDtoSchema.parse(await readBody(created));
+    expect(brief.recipientUserId).toBe(recipientUserId);
+    expect(brief.snapshot.updates.map((entry) => entry.eventId)).toEqual([feedEventId]);
+    briefId = brief.id;
+
+    const otherReader = await briefRoute.GET(
+      jsonRequest("GET", `/v1/handoffs/${briefId}`, { headers: authorized(OWNER_TOKEN) }),
+      { briefId },
+    );
+    expect(otherReader.status).toBe(404);
+
+    const owned = await briefRoute.GET(
+      jsonRequest("GET", `/v1/handoffs/${briefId}`, { headers: authorized(RECIPIENT_TOKEN) }),
+      { briefId },
+    );
+    expect(owned.status).toBe(200);
+    expect(handoffBriefDtoSchema.parse(await readBody(owned)).isStale).toBe(false);
+  });
+
+  it("acknowledges the brief with a care session and replays the same cursor", async () => {
+    const key = randomUUID();
+    const body = JSON.stringify({ startCare: true });
+    const path = `/v1/handoffs/${briefId}/acknowledge`;
+
+    const first = await acknowledgeRoute.POST(
+      jsonRequest("POST", path, { headers: authorized(RECIPIENT_TOKEN, key), body }),
+      { briefId },
+    );
+    expect(first.status).toBe(200);
+    const acknowledged = acknowledgeBriefResponseSchema.parse(await readBody(first));
+    expect(acknowledged.session?.userId).toBe(recipientUserId);
+    expect(acknowledged.acknowledgedSeq).toBe(
+      acknowledged.brief.snapshot.boundary.throughSeqInclusive,
+    );
+
+    const replay = await acknowledgeRoute.POST(
+      jsonRequest("POST", path, { headers: authorized(RECIPIENT_TOKEN, key), body }),
+      { briefId },
+    );
+    expect(replay.status).toBe(200);
+    const replayed = acknowledgeBriefResponseSchema.parse(await readBody(replay));
+    expect(replayed.acknowledgedSeq).toBe(acknowledged.acknowledgedSeq);
+    expect(replayed.session?.id).toBe(acknowledged.session?.id);
+  });
+
+  it("leaves the recipient with nothing unread and the author's count untouched", async () => {
+    const forRecipient = await readOverview(RECIPIENT_TOKEN);
+    expect(forRecipient.unreadChangeCount).toBe(0);
+    expect(forRecipient.activeSessions.map((session) => session.userId)).toEqual([recipientUserId]);
+
+    // Acknowledging is caller specific: one reader's cursor cannot move another's count.
+    expect((await readOverview(OWNER_TOKEN)).unreadChangeCount).toBe(2);
+  });
+
+  it("removes the entry and reports it as removed in the next brief", async () => {
+    const removed = await eventRoute.DELETE(
+      jsonRequest("DELETE", `/v1/events/${feedEventId}`, {
+        headers: authorized(OWNER_TOKEN, randomUUID()),
+        body: JSON.stringify({ expectedVersion: 2 }),
+      }),
+      { eventId: feedEventId },
+    );
+    expect(removed.status).toBe(200);
+    expect(eventDtoSchema.parse(await readBody(removed)).status).toBe("deleted");
+
+    const next = await createBriefFor(RECIPIENT_TOKEN);
+    expect(next.status).toBe(201);
+    const brief = handoffBriefDtoSchema.parse(await readBody(next));
+    expect(brief.snapshot.boundary.fromSeqExclusive).toBe(2);
+    expect(brief.snapshot.updates).toEqual([
+      expect.objectContaining({ eventId: feedEventId, label: "removed" }),
+    ]);
+    // A removed entry is no longer recorded care, so it stops being the latest known fact.
+    expect((await readOverview(RECIPIENT_TOKEN)).latest.feed).toBeNull();
   });
 });

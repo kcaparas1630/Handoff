@@ -1,8 +1,12 @@
 import { sql } from "drizzle-orm";
 import type { HandoffDatabase, HandoffTransaction } from "./types/database";
 
+export type IsolationLevel = "read committed" | "repeatable read" | "serializable";
+
 export interface TenantContext {
   workspaceId: string;
+  /** Brief generation asks for `repeatable read` so its cutoff and its sources agree (§4). */
+  isolationLevel?: IsolationLevel;
 }
 
 /** What the caller has already proven about themselves before any workspace is known. */
@@ -19,13 +23,16 @@ export interface IdentityContext {
  */
 export async function withTenantTransaction<T>(
   db: HandoffDatabase,
-  { workspaceId }: TenantContext,
+  { workspaceId, isolationLevel }: TenantContext,
   run: (tx: HandoffTransaction) => Promise<T>,
 ): Promise<T> {
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`select set_config('handoff.workspace_id', ${workspaceId}, true)`);
-    return run(tx);
-  });
+  return db.transaction(
+    async (tx) => {
+      await tx.execute(sql`select set_config('handoff.workspace_id', ${workspaceId}, true)`);
+      return run(tx);
+    },
+    isolationLevel === undefined ? undefined : { isolationLevel },
+  );
 }
 
 /**

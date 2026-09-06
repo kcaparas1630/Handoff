@@ -2,7 +2,6 @@
 // request fingerprint is keyed, because bodies contain low-entropy personal values.
 import { timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { sql } from "drizzle-orm";
 import { infrastructureRepository } from "@handoff/db";
 import type { HandoffTransaction } from "@handoff/db";
 import { ApiHttpError } from "./errors";
@@ -51,12 +50,9 @@ export async function runIdempotent({
   });
   const record = idempotencyResponseRecord(actor.userId, operation, key);
 
-  // Two requests that share a key arrive at the same moment often enough to matter: the second
-  // would otherwise read no stored response and then fail on the primary key. This transaction
-  // scoped lock makes it wait and replay instead. It is released at commit or rollback, and is
-  // never held across an external call.
-  const lockName = `${actor.userId}:${operation}:${key}`;
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${lockName}))`);
+  // Two requests sharing a key arrive together often enough to matter; the loser waits here and
+  // then replays rather than failing on the primary key.
+  await infrastructureRepository.acquireIdempotencyLock(tx, `${actor.userId}:${operation}:${key}`);
 
   const stored = await infrastructureRepository.findIdempotencyRequest(
     tx,

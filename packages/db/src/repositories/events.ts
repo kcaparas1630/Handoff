@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { children, eventRevisions, events } from "../schema";
 import type { HandoffTransaction } from "../types/database";
 import type { EventKind } from "../types/enums";
@@ -265,4 +265,68 @@ export async function listRecentUnknownTimeEvents(
       ),
     )
     .orderBy(desc(events.createdAt), desc(events.id));
+}
+
+/**
+ * The events a confirmed capture already produced. Confirmation replay returns these instead of
+ * creating a second set; UNIQUE (capture_id, source_candidate_id) is what makes that safe.
+ */
+export async function listEventsForCapture(
+  tx: HandoffTransaction,
+  workspaceId: string,
+  captureId: string,
+): Promise<EventRow[]> {
+  return tx
+    .select()
+    .from(events)
+    .where(and(eq(events.workspaceId, workspaceId), eq(events.captureId, captureId)));
+}
+
+/**
+ * Resolves the child that owns an event for the `/v1/events/:eventId` routes, which carry no
+ * workspace or child in the path. Runs inside a tenant transaction, so a caller only ever sees
+ * their own workspace's events; child permission is still checked afterwards.
+ */
+export async function findEventLocation(
+  tx: HandoffTransaction,
+  workspaceId: string,
+  eventId: string,
+): Promise<{ workspaceId: string; childId: string } | null> {
+  const [row] = await tx
+    .select({ workspaceId: events.workspaceId, childId: events.childId })
+    .from(events)
+    .where(and(eq(events.workspaceId, workspaceId), eq(events.id, eventId)))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * The disclosed first-handoff window: published in the last 24 hours, or describing care that
+ * happened in the last 24 hours. Filtered in SQL so a first brief never decrypts the whole
+ * journal to throw most of it away.
+ */
+export async function listInitialWindowRevisions(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; childId: string; throughSeqInclusive: number; since: Date },
+): Promise<{ revision: EventRevisionRow }[]> {
+  return tx
+    .select({ revision: eventRevisions })
+    .from(eventRevisions)
+    .innerJoin(
+      events,
+      and(
+        eq(events.workspaceId, eventRevisions.workspaceId),
+        eq(events.childId, eventRevisions.childId),
+        eq(events.id, eventRevisions.eventId),
+      ),
+    )
+    .where(
+      and(
+        eq(eventRevisions.workspaceId, input.workspaceId),
+        eq(eventRevisions.childId, input.childId),
+        lte(eventRevisions.journalSeq, input.throughSeqInclusive),
+        or(gte(eventRevisions.createdAt, input.since), gte(events.occurredAt, input.since)),
+      ),
+    )
+    .orderBy(asc(eventRevisions.journalSeq));
 }

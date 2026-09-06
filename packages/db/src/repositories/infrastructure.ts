@@ -70,3 +70,15 @@ export async function insertAuditLog(
   if (!row) throw new Error("insertAuditLog returned no row");
   return row;
 }
+
+/**
+ * Serializes two requests that arrive under the same idempotency key at the same moment: the
+ * second waits here and then reads the stored response instead of failing on the primary key.
+ * Held until the transaction commits or rolls back, and never across an external call.
+ */
+export async function acquireIdempotencyLock(
+  tx: HandoffTransaction,
+  lockName: string,
+): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${lockName}))`);
+}

@@ -23,7 +23,6 @@ import {
   encryptRevisionSnapshot,
 } from "../security/journal-fields";
 import { assertCandidatesAreValid, loadAuthorizedCapture, toCaptureDto } from "./captures";
-import { listEventsForCapture } from "./journal-queries";
 import { resolveCaptureWorkspace } from "./workspace-lookup";
 import type { EventFacts } from "../types/journal";
 import type { ScopedTransaction } from "../lib/in-tenant-transaction";
@@ -267,7 +266,7 @@ async function replayConfirmation(
   const quotes = new Map(
     draft.candidates.map((candidate) => [candidate.id, candidate.sourceQuote]),
   );
-  const rows = await listEventsForCapture(tx, capture.workspaceId, capture.id);
+  const rows = await eventsRepository.listEventsForCapture(tx, capture.workspaceId, capture.id);
   rows.sort(
     (a, b) => (order.get(a.sourceCandidateId) ?? 0) - (order.get(b.sourceCandidateId) ?? 0),
   );

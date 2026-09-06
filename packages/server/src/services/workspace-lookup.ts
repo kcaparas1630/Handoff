@@ -5,6 +5,7 @@
 import {
   capturesRepository,
   childrenRepository,
+  eventsRepository,
   handoffsRepository,
   identityRepository,
   invitationsRepository,
@@ -12,7 +13,6 @@ import {
   withTenantTransaction,
 } from "@handoff/db";
 import { ApiHttpError } from "../http/errors";
-import { findEventLocation } from "./journal-queries";
 import type { ServiceDeps } from "../types/runtime";
 
 /** A caller with more workspaces than this cannot reach the rest through an id-only path. */
@@ -79,7 +79,7 @@ export async function resolveEventLocation({
 }): Promise<{ workspaceId: string; childId: string }> {
   for (const workspaceId of await listCallerWorkspaceIds(deps, actorUserId)) {
     const found = await withTenantTransaction(deps.db, { workspaceId }, (tx) =>
-      findEventLocation(tx, workspaceId, eventId),
+      eventsRepository.findEventLocation(tx, workspaceId, eventId),
     );
     if (found !== null) return found;
   }

@@ -14,7 +14,7 @@ import {
   getEvent,
   listEvents,
 } from "../../packages/server/src/services/events";
-import { listEventsForCapture } from "../../packages/server/src/services/journal-queries";
+import { listEventsForCapture } from "../../packages/db/src/repositories/events";
 import { candidate, confirmManualCapture } from "./support/journal-fixtures";
 import {
   createHarness,

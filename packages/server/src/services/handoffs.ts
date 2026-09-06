@@ -16,7 +16,6 @@ import type { EventRevisionRow, HandoffBriefRow, HandoffTransaction } from "@han
 import type { LatestKnownFacts, RevisionForBrief } from "@handoff/domain";
 import { authorizeChild } from "../auth/authorize";
 import { ApiHttpError } from "../http/errors";
-import { withTenantTransactionOptions } from "../lib/tenant-transaction-options";
 import {
   decryptBriefSnapshot,
   decryptRevisionSnapshot,
@@ -25,7 +24,6 @@ import {
 import { decryptUserProfile } from "../security/profile-fields";
 import { withRequestKeyCache } from "../security/request-key-cache";
 import { toCareSessionDtos } from "./care";
-import { listInitialWindowRevisions } from "./journal-queries";
 import { resolveBriefWorkspace, resolveChildWorkspace } from "./workspace-lookup";
 import type { ServiceDeps } from "../types/runtime";
 
@@ -48,7 +46,7 @@ export async function createBrief({
   // would dominate the whole brief.
   const scoped: ServiceDeps = { ...deps, keys: withRequestKeyCache(deps.keys) };
 
-  return withTenantTransactionOptions(
+  return withTenantTransaction(
     scoped.db,
     { workspaceId, isolationLevel: "repeatable read" },
     async (tx) => {
@@ -73,7 +71,7 @@ export async function createBrief({
               throughSeqInclusive,
             )
           : (
-              await listInitialWindowRevisions(tx, {
+              await eventsRepository.listInitialWindowRevisions(tx, {
                 workspaceId,
                 childId,
                 throughSeqInclusive,
