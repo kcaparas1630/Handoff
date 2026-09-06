@@ -101,8 +101,10 @@ apps/api/metro.config.js
 apps/api/server.ts
 apps/api/src/app/_layout.tsx
 apps/api/src/app/index.tsx
-apps/api/src/app/accept-invitation.tsx
+apps/api/src/app/accept-invitation+api.ts
 ```
+
+The invitation landing page is `accept-invitation+api.ts` rather than `accept-invitation.tsx`: it renders server-side HTML because the app links come from server-only `APP_LINK_PARENTS`/`APP_LINK_DAYCARE` configuration that must not reach a client bundle.
 
 These NativeWind configuration paths assume the stable setup selected in the initial compatibility check. If that version uses a different integration, update this file manifest before coding so the next model follows one coherent configuration.
 

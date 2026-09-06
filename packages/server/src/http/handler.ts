@@ -85,7 +85,11 @@ export function createHandler({ runtime }: { runtime: ServerRuntime }) {
         const body = EMPTY_BODY_STATUSES.has(response.status) ? undefined : await response.text();
         return new Response(body, { status: response.status, headers });
       } catch (error) {
-        return toErrorResponse(error, requestId);
+        const failure = toErrorResponse(error, requestId);
+        // The envelope already carries the id; the header lets a proxy or client log correlate
+        // a failure without reading a body that may describe personal data.
+        failure.headers.set("X-Request-Id", requestId);
+        return failure;
       }
     },
   };

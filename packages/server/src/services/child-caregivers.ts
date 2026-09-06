@@ -9,7 +9,9 @@ import type { ChildCaregiverDto, UpdateChildCaregiversRequest } from "@handoff/c
 import type { ChildCaregiverRow, HandoffTransaction } from "@handoff/db";
 import { authorizeChild } from "../auth/authorize";
 import { ApiHttpError } from "../http/errors";
+import { inTenantTransaction } from "../lib/in-tenant-transaction";
 import { decryptUserProfile } from "../security/profile-fields";
+import type { ScopedTransaction } from "../lib/in-tenant-transaction";
 import type { ServiceDeps } from "../types/runtime";
 
 interface CaregiverRow {
@@ -84,15 +86,18 @@ export async function updateChildCaregivers({
   workspaceId,
   childId,
   input,
+  tx,
 }: {
   deps: ServiceDeps;
   actorUserId: string;
   workspaceId: string;
   childId: string;
   input: UpdateChildCaregiversRequest;
+  /** Supplied by an idempotent route so these grants and the replay record commit together. */
+  tx?: ScopedTransaction;
 }): Promise<ChildCaregiverDto[]> {
-  const rows = await withTenantTransaction(deps.db, { workspaceId }, async (tx) => {
-    const authorized = await authorizeChild(tx, { userId: actorUserId, workspaceId, childId });
+  return inTenantTransaction(deps, workspaceId, tx, async (scoped) => {
+    const authorized = await authorizeChild(scoped, { userId: actorUserId, workspaceId, childId });
     if (authorized.permission !== "manager") {
       throw ApiHttpError.forbidden("You cannot change this child's caregivers");
     }
@@ -100,7 +105,7 @@ export async function updateChildCaregivers({
       throw ApiHttpError.conflict("This child changed since you loaded it");
     }
 
-    const members = await identityRepository.listMembershipsForWorkspace(tx, workspaceId);
+    const members = await identityRepository.listMembershipsForWorkspace(scoped, workspaceId);
     for (const grant of input.grants) {
       const member = members.find((row) => row.userId === grant.userId && row.status === "active");
       if (member === undefined) {
@@ -115,7 +120,7 @@ export async function updateChildCaregivers({
           grants: ["A guardian may only be granted reader permission"],
         });
       }
-      await childrenRepository.upsertChildCaregiver(tx, {
+      await childrenRepository.upsertChildCaregiver(scoped, {
         workspaceId,
         childId,
         userId: grant.userId,
@@ -123,7 +128,7 @@ export async function updateChildCaregivers({
         permission: grant.permission,
         grantedByUserId: actorUserId,
       });
-      await infrastructureRepository.insertAuditLog(tx, {
+      await infrastructureRepository.insertAuditLog(scoped, {
         workspaceId,
         childId,
         actorUserId,
@@ -135,8 +140,8 @@ export async function updateChildCaregivers({
     }
 
     for (const userId of input.revokeUserIds ?? []) {
-      await childrenRepository.revokeChildCaregiver(tx, { workspaceId, childId, userId });
-      await infrastructureRepository.insertAuditLog(tx, {
+      await childrenRepository.revokeChildCaregiver(scoped, { workspaceId, childId, userId });
+      await infrastructureRepository.insertAuditLog(scoped, {
         workspaceId,
         childId,
         actorUserId,
@@ -146,7 +151,8 @@ export async function updateChildCaregivers({
         requestId: deps.requestId,
       });
     }
-    return loadCaregivers(tx, workspaceId, childId);
+    const rows = await loadCaregivers(scoped, workspaceId, childId);
+    // Named-person display authorized through a visible care record (docs/pii-encryption.md).
+    return decryptCaregiverNames(deps, rows);
   });
-  return decryptCaregiverNames(deps, rows);
 }

@@ -10,6 +10,9 @@
     "export": "expo export -p web"
   },
   "dependencies": {
+    "@handoff/contracts": "workspace:*",
+    "@handoff/db": "workspace:*",
+    "@handoff/server": "workspace:*",
     "expo": "~57.0.20",
     "expo-router": "~57.0.19",
     "expo-server": "~57.0.3",
@@ -17,7 +20,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
-    "react-native-web": "~0.21.0"
+    "react-native-web": "~0.21.0",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

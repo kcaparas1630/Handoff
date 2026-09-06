@@ -1,0 +1,95 @@
+# UNEXECUTED. This flow has never been run: milestone 1 had no device, simulator, or Clerk
+# development instance available. Treat it as a reviewed script, not as passing evidence.
+#
+# Requirements before the first run:
+#   - A Clerk development instance. SIGN_IN_EMAIL and INVITEE_EMAIL must be Clerk test addresses
+#     (`+clerk_test`), whose emailed code is the fixed test code in SIGN_IN_CODE. A real mailbox
+#     cannot be automated here, and no real child or caregiver data belongs in this file.
+#   - A parents build whose EXPO_PUBLIC_API_URL points at a running API and a disposable database.
+#   - `maestro test tests/e2e/onboarding-invitation.yaml`.
+#
+# Every selector below is a testID that exists in packages/features today, or the accessible
+# label of a choice chip. Chips carry no per-option testID, so they are tapped by their label.
+
+appId: com.handoff.parents
+env:
+  SIGN_IN_EMAIL: "handoff+clerk_test@example.com"
+  SIGN_IN_CODE: "424242"
+  WORKSPACE_NAME: "Ortega Family"
+  TIMEZONE: "America/Vancouver"
+  CHILD_NAME: "Rowan"
+  CHILD_BIRTHDATE: "2022-04-01"
+  INVITEE_EMAIL: "handoff.caregiver+clerk_test@example.com"
+---
+- launchApp:
+    clearState: true
+
+# Sign in with an emailed code. There is no password step.
+- assertVisible:
+    id: "sign-in-email"
+- tapOn:
+    id: "sign-in-email"
+- inputText: "${SIGN_IN_EMAIL}"
+- tapOn:
+    id: "sign-in-send-code"
+- assertVisible:
+    id: "sign-in-code"
+- tapOn:
+    id: "sign-in-code"
+- inputText: "${SIGN_IN_CODE}"
+- tapOn:
+    id: "sign-in-verify"
+
+# A brand new account has no workspace, so the child list sends the user straight to onboarding.
+- assertVisible:
+    id: "onboarding-workspace-name"
+- tapOn:
+    id: "onboarding-workspace-name"
+- inputText: "${WORKSPACE_NAME}"
+- tapOn:
+    id: "onboarding-timezone"
+- eraseText
+- inputText: "${TIMEZONE}"
+- tapOn:
+    id: "onboarding-create-workspace"
+
+# Step 2: the first child. The birthdate is optional and is entered here to cover the parsing path.
+- assertVisible:
+    id: "onboarding-child-name"
+- tapOn:
+    id: "onboarding-child-name"
+- inputText: "${CHILD_NAME}"
+- tapOn:
+    id: "onboarding-child-birthdate"
+- inputText: "${CHILD_BIRTHDATE}"
+- tapOn:
+    id: "onboarding-create-child"
+
+# The new child's profile opens. The roster section only appears for a manager, which the owner is.
+- assertVisible: "${CHILD_NAME}"
+- assertVisible: "Caregivers"
+
+# Onboarding replaced the home route, so the child list is reached by relaunching rather than back.
+- launchApp
+- assertVisible: "Your children"
+- assertVisible: "${CHILD_NAME}"
+
+# Invite a caregiver for that child. Parents builds offer only the caregiver role, and the
+# relationship and permission chips already default to caregiver / can record care.
+- tapOn:
+    id: "child-list-invite"
+- assertVisible:
+    id: "invite-email"
+- tapOn:
+    id: "invite-email"
+- inputText: "${INVITEE_EMAIL}"
+- tapOn: "Caregiver"
+- tapOn: "Can record care"
+- tapOn: "${CHILD_NAME}"
+- tapOn:
+    id: "invite-submit"
+
+# The list refetches from the server; nothing counts as invited until the server confirms it.
+- assertVisible: "Invitation sent. It appears below once the server confirms it."
+- assertVisible: "Caregiver · 1 child"
+- assertVisible: "Sent, waiting to be accepted"

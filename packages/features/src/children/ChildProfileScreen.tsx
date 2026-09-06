@@ -15,7 +15,9 @@ const relationshipLabels = {
 
 export function ChildProfileScreen({ childId, onBack }: ChildProfileScreenProps) {
   const child = useChild(childId);
-  const caregivers = useChildCaregivers(childId);
+  // Only a manager may read the roster; the server answers 403 for readers and contributors.
+  const canManageCaregivers = child.data?.permission === "manager";
+  const caregivers = useChildCaregivers(canManageCaregivers ? childId : null);
 
   if (child.isPending) {
     return (
@@ -59,44 +61,50 @@ export function ChildProfileScreen({ childId, onBack }: ChildProfileScreenProps)
         </Text>
       </View>
 
-      <Text className="text-lg font-semibold text-primary dark:text-primary-dark">Caregivers</Text>
-
-      {caregivers.isPending ? <StatusMessage tone="info" message="Loading caregivers…" /> : null}
-
-      {caregivers.isError ? (
+      {canManageCaregivers ? (
         <>
-          <StatusMessage tone="error" message={describeError(caregivers.error)} />
-          <Button label="Try again" onPress={() => void caregivers.refetch()} />
+          <Text className="text-lg font-semibold text-primary dark:text-primary-dark">
+            Caregivers
+          </Text>
+
+          {caregivers.isPending ? (
+            <StatusMessage tone="info" message="Loading caregivers…" />
+          ) : null}
+
+          {caregivers.isError ? (
+            <>
+              <StatusMessage tone="error" message={describeError(caregivers.error)} />
+              <Button label="Try again" onPress={() => void caregivers.refetch()} />
+            </>
+          ) : null}
+
+          {caregivers.isSuccess && caregiverList.length === 0 ? (
+            <StatusMessage
+              tone="info"
+              message="Nobody else has access to this child yet. Invite a caregiver to share the day."
+            />
+          ) : null}
+
+          {caregiverList.map((caregiver) => (
+            <View
+              key={caregiver.userId}
+              className="gap-xs rounded-md border border-border bg-surface px-lg py-md dark:border-border-dark dark:bg-surface-dark"
+            >
+              <Text className="text-base font-semibold text-primary dark:text-primary-dark">
+                {caregiver.displayName ?? "Name not shared"}
+              </Text>
+              <Text className="text-sm text-muted dark:text-muted-dark">
+                {relationshipLabels[caregiver.relationship]} ·{" "}
+                {caregiver.status === "active" ? "Active" : "Revoked"}
+              </Text>
+            </View>
+          ))}
+
+          <StatusMessage
+            tone="info"
+            message="You manage caregivers for this child. Send an invitation from the invitations screen to grant access; changing an existing grant arrives with the child dashboard."
+          />
         </>
-      ) : null}
-
-      {caregivers.isSuccess && caregiverList.length === 0 ? (
-        <StatusMessage
-          tone="info"
-          message="Nobody else has access to this child yet. Invite a caregiver to share the day."
-        />
-      ) : null}
-
-      {caregiverList.map((caregiver) => (
-        <View
-          key={caregiver.userId}
-          className="gap-xs rounded-md border border-border bg-surface px-lg py-md dark:border-border-dark dark:bg-surface-dark"
-        >
-          <Text className="text-base font-semibold text-primary dark:text-primary-dark">
-            {caregiver.displayName ?? "Name not shared"}
-          </Text>
-          <Text className="text-sm text-muted dark:text-muted-dark">
-            {relationshipLabels[caregiver.relationship]} ·{" "}
-            {caregiver.status === "active" ? "Active" : "Revoked"}
-          </Text>
-        </View>
-      ))}
-
-      {child.data.permission === "manager" ? (
-        <StatusMessage
-          tone="info"
-          message="You manage caregivers for this child. Send an invitation from the invitations screen to grant access; changing an existing grant arrives with the child dashboard."
-        />
       ) : null}
 
       <Button label="Back" variant="quiet" onPress={onBack} />

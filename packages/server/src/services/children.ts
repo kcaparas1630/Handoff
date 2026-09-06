@@ -11,8 +11,10 @@ import type {
 import type { ChildRow, HandoffTransaction } from "@handoff/db";
 import { authorizeChild, authorizeWorkspace } from "../auth/authorize";
 import { ApiHttpError } from "../http/errors";
+import { inTenantTransaction } from "../lib/in-tenant-transaction";
 import { decryptChildProfile, encryptChildProfile } from "../security/profile-fields";
 import { canManageAnyChild, resolveManagerScope } from "./grant-scope";
+import type { ScopedTransaction } from "../lib/in-tenant-transaction";
 import type { ServiceDeps } from "../types/runtime";
 
 /**
@@ -55,18 +57,19 @@ export async function createChild({
   actorUserId,
   workspaceId,
   input,
+  tx,
 }: {
   deps: ServiceDeps;
   actorUserId: string;
   workspaceId: string;
   input: CreateChildRequest;
+  /** Supplied by an idempotent route so this write and its replay record commit together. */
+  tx?: ScopedTransaction;
 }): Promise<ChildDto> {
-  const birthdate = input.birthdate ?? null;
-  assertBirthdateNotFuture(birthdate, deps.now());
-
-  const actorIsOwner = await withTenantTransaction(deps.db, { workspaceId }, async (tx) => {
-    const actor = await authorizeWorkspace(tx, { userId: actorUserId, workspaceId });
-    const scope = await resolveManagerScope(tx, {
+  const childId = randomUUID();
+  const child = await inTenantTransaction(deps, workspaceId, tx, async (scoped) => {
+    const actor = await authorizeWorkspace(scoped, { userId: actorUserId, workspaceId });
+    const scope = await resolveManagerScope(scoped, {
       workspaceId,
       userId: actorUserId,
       appRole: actor.membership.appRole,
@@ -74,28 +77,27 @@ export async function createChild({
     if (!canManageAnyChild(scope)) {
       throw ApiHttpError.forbidden("You cannot add a child to this workspace");
     }
-    return actor.membership.appRole === "owner";
-  });
 
-  const childId = randomUUID();
-  const profileCiphertext = await encryptChildProfile(deps.keys, {
-    workspaceId,
-    childId,
-    name: input.name,
-    birthdate,
-  });
+    const birthdate = input.birthdate ?? null;
+    assertBirthdateNotFuture(birthdate, deps.now());
+    // `data_keys` is not a tenant table, so resolving the key on its own connection does not
+    // widen this transaction.
+    const profileCiphertext = await encryptChildProfile(deps.keys, {
+      workspaceId,
+      childId,
+      name: input.name,
+      birthdate,
+    });
 
-  const child = await withTenantTransaction(deps.db, { workspaceId }, async (tx) => {
-    await authorizeWorkspace(tx, { userId: actorUserId, workspaceId });
-    const inserted = await childrenRepository.insertChild(tx, {
+    const inserted = await childrenRepository.insertChild(scoped, {
       id: childId,
       workspaceId,
       profileCiphertext,
       createdByUserId: actorUserId,
     });
     // An owner needs no grant; a manager keeps managing the child they just created.
-    if (!actorIsOwner) {
-      await childrenRepository.upsertChildCaregiver(tx, {
+    if (actor.membership.appRole !== "owner") {
+      await childrenRepository.upsertChildCaregiver(scoped, {
         workspaceId,
         childId,
         userId: actorUserId,
@@ -104,7 +106,7 @@ export async function createChild({
         grantedByUserId: actorUserId,
       });
     }
-    await infrastructureRepository.insertAuditLog(tx, {
+    await infrastructureRepository.insertAuditLog(scoped, {
       workspaceId,
       childId,
       actorUserId,
@@ -208,47 +210,48 @@ export async function updateChild({
   workspaceId,
   childId,
   input,
+  tx,
 }: {
   deps: ServiceDeps;
   actorUserId: string;
   workspaceId: string;
   childId: string;
   input: UpdateChildRequest;
+  /** Supplied by an idempotent route so this write and its replay record commit together. */
+  tx?: ScopedTransaction;
 }): Promise<ChildDto> {
-  const authorized = await withTenantTransaction(deps.db, { workspaceId }, async (tx) => {
-    const result = await authorizeChild(tx, { userId: actorUserId, workspaceId, childId });
-    if (!canManageChildGrants(accessContextOf(result.membership.appRole, result.permission))) {
+  return inTenantTransaction(deps, workspaceId, tx, async (scoped) => {
+    const authorized = await authorizeChild(scoped, { userId: actorUserId, workspaceId, childId });
+    if (
+      !canManageChildGrants(accessContextOf(authorized.membership.appRole, authorized.permission))
+    ) {
       throw ApiHttpError.forbidden("You cannot edit this child's profile");
     }
-    return result;
-  });
 
-  const current = await decryptChildProfile(deps.keys, {
-    workspaceId,
-    childId,
-    envelope: authorized.child.profileCiphertext,
-  });
-  const name = input.name ?? current.name;
-  const birthdate = input.birthdate === undefined ? current.birthdate : input.birthdate;
-  assertBirthdateNotFuture(birthdate, deps.now());
-  const profileCiphertext = await encryptChildProfile(deps.keys, {
-    workspaceId,
-    childId,
-    name,
-    birthdate,
-  });
+    const current = await decryptChildProfile(deps.keys, {
+      workspaceId,
+      childId,
+      envelope: authorized.child.profileCiphertext,
+    });
+    const name = input.name ?? current.name;
+    const birthdate = input.birthdate === undefined ? current.birthdate : input.birthdate;
+    assertBirthdateNotFuture(birthdate, deps.now());
+    const profileCiphertext = await encryptChildProfile(deps.keys, {
+      workspaceId,
+      childId,
+      name,
+      birthdate,
+    });
 
-  const updated = await withTenantTransaction(deps.db, { workspaceId }, async (tx) => {
-    await authorizeChild(tx, { userId: actorUserId, workspaceId, childId });
-    return childrenRepository.updateChildProfile(tx, {
+    const updated = await childrenRepository.updateChildProfile(scoped, {
       workspaceId,
       childId,
       expectedVersion: input.expectedVersion,
       profileCiphertext,
     });
+    if (updated === null) throw ApiHttpError.conflict("This child changed since you loaded it");
+    return toChildDto(deps, updated, authorized.permission);
   });
-  if (updated === null) throw ApiHttpError.conflict("This child changed since you loaded it");
-  return toChildDto(deps, updated, authorized.permission);
 }
 
 /** Rebuilds the domain access context from an already-resolved effective permission. */

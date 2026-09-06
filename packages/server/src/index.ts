@@ -47,6 +47,8 @@ export type { ServerRuntime, ServiceDeps } from "./types/runtime";
 
 export { ApiHttpError, toErrorResponse } from "./http/errors";
 export { createHandler } from "./http/handler";
+export { inTenantTransaction } from "./lib/in-tenant-transaction";
+export type { ScopedTransaction } from "./lib/in-tenant-transaction";
 export { runIdempotent } from "./http/idempotency";
 export type { IdempotentResult } from "./http/idempotency";
 export type {
@@ -84,6 +86,7 @@ export {
 export { applyAcceptedInvitation } from "./services/invitation-acceptance";
 export type { InvitationApplication } from "./services/invitation-acceptance";
 export { ensureFreshMembership, listMembers, revokeMember } from "./services/memberships";
+export { resolveChildWorkspace, resolveInvitationWorkspace } from "./services/workspace-lookup";
 export { handleClerkWebhook } from "./services/clerk-webhooks";
 export type { WebhookOutcome } from "./services/clerk-webhooks";
 export {

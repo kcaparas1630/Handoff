@@ -8,7 +8,8 @@ export {
   withTenantTransaction,
 } from "./tenant-transaction";
 export type { IdentityContext, TenantContext } from "./tenant-transaction";
-export { runMigrations } from "./migrate";
+// runMigrations is intentionally not re-exported: it resolves the migrations folder from disk
+// and is a CLI concern. Tooling and tests import ./migrate directly so the API bundle stays clean.
 
 export * as dataKeyRepository from "./repositories/data-keys";
 export * as identityRepository from "./repositories/identity";
