@@ -1,0 +1,18 @@
+{
+  "name": "@handoff/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-kms": "^3.1127.0",
+    "@clerk/backend": "^3.17.1",
+    "@handoff/contracts": "workspace:*",
+    "@handoff/db": "workspace:*",
+    "@handoff/domain": "workspace:*",
+    "zod": "^4.5.4"
+  }
+}
