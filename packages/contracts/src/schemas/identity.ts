@@ -56,3 +56,8 @@ export const workspaceMemberDtoSchema = z.object({
   status: membershipStatusSchema,
   version: versionSchema,
 });
+
+// The only self-service profile write: recording which processing notice version was accepted.
+export const updateSelfRequestSchema = z.object({
+  processingNoticeVersion: z.string().trim().min(1).max(40),
+});

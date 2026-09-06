@@ -11,6 +11,7 @@ import type {
   workspaceDtoSchema,
   workspaceKindSchema,
   workspaceMemberDtoSchema,
+  updateSelfRequestSchema,
 } from "../schemas/identity";
 
 export type AppRole = z.infer<typeof appRoleSchema>;
@@ -25,3 +26,4 @@ export type WorkspaceDto = z.infer<typeof workspaceDtoSchema>;
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequestSchema>;
 export type BootstrapResponse = z.infer<typeof bootstrapResponseSchema>;
 export type WorkspaceMemberDto = z.infer<typeof workspaceMemberDtoSchema>;
+export type UpdateSelfRequest = z.infer<typeof updateSelfRequestSchema>;
