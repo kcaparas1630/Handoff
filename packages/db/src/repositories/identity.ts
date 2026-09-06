@@ -94,6 +94,69 @@ export async function listActiveMembershipsForUser(
     .where(and(eq(workspaceMemberships.userId, userId), eq(workspaceMemberships.status, "active")));
 }
 
+export async function findUserById(
+  tx: HandoffTransaction,
+  userId: string,
+): Promise<UserRow | null> {
+  const [row] = await tx.select().from(users).where(eq(users.id, userId)).limit(1);
+  return row ?? null;
+}
+
+/**
+ * Second half of the two-step profile write. `data_keys` references `users(id)`, so a new user's
+ * scope key can only be provisioned after its row exists; the caller inserts, provisions the key,
+ * encrypts, and updates inside one transaction so no unencrypted placeholder is ever committed.
+ */
+export async function updateUserProfile(
+  tx: HandoffTransaction,
+  input: { userId: string; profileCiphertext: unknown },
+): Promise<UserRow | null> {
+  const [row] = await tx
+    .update(users)
+    .set({ profileCiphertext: input.profileCiphertext, updatedAt: sql`now()` })
+    .where(eq(users.id, input.userId))
+    .returning();
+  return row ?? null;
+}
+
+/** Account deletion keeps the row so authored records retain an attribution target. */
+export async function markUserDeleted(
+  tx: HandoffTransaction,
+  userId: string,
+): Promise<UserRow | null> {
+  const [row] = await tx
+    .update(users)
+    .set({ status: "deleted", updatedAt: sql`now()` })
+    .where(eq(users.id, userId))
+    .returning();
+  return row ?? null;
+}
+
+/** Companion of updateUserProfile for the workspace scope's first key. */
+export async function updateWorkspaceProfile(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; profileCiphertext: unknown },
+): Promise<WorkspaceRow | null> {
+  const [row] = await tx
+    .update(workspaces)
+    .set({ profileCiphertext: input.profileCiphertext, updatedAt: sql`now()` })
+    .where(eq(workspaces.id, input.workspaceId))
+    .returning();
+  return row ?? null;
+}
+
+/** Roster read for owner/manager membership management and the last-owner check. */
+export async function listMembershipsForWorkspace(
+  tx: HandoffTransaction,
+  workspaceId: string,
+): Promise<WorkspaceMembershipRow[]> {
+  return tx
+    .select()
+    .from(workspaceMemberships)
+    .where(eq(workspaceMemberships.workspaceId, workspaceId))
+    .orderBy(workspaceMemberships.createdAt, workspaceMemberships.userId);
+}
+
 export async function revokeMembership(
   tx: HandoffTransaction,
   input: { workspaceId: string; userId: string; expectedVersion: number },
