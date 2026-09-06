@@ -5,6 +5,7 @@ import { ProviderError, providerErrorForStatus } from "../lib/provider-error";
 import type {
   ObjectStorage,
   StoredObjectHead,
+  StoredObjectSummary,
   UploadAuthorizationRequest,
   UploadAuthorizationResult,
 } from "./object-storage";
@@ -97,6 +98,29 @@ export function createSupabaseStorage({
         throw new ProviderError({ provider: PROVIDER, code: "invalid_input", retryable: false });
       }
       return bytes;
+    },
+
+    async putObject(objectKey: string, bytes: Buffer, contentType: string): Promise<void> {
+      // No upsert here either: replacing an object is a delete followed by a write, so a partial
+      // overwrite can never leave bytes nobody validated under a published key.
+      const { error } = await files.upload(objectKey, bytes, { contentType, upsert: false });
+      if (error !== null) throw toProviderError(error);
+    },
+
+    async listObjects(prefix: string, limit: number): Promise<StoredObjectSummary[]> {
+      // Flat listing: the keys are `workspace/child/capture/asset.ext`, and a hierarchical walk
+      // would cost one request per capture just to find the occasional orphan.
+      const { data, error } = await files.listV2({ prefix, limit });
+      if (error !== null) throw toProviderError(error);
+      // A flat listing returns whole keys, but the API also accepts a prefix that is a folder,
+      // in which case names come back relative to it. Rebuild the key rather than assume.
+      return data.objects.map((object) => {
+        const name = object.key ?? object.name;
+        return {
+          objectKey: name.startsWith(prefix) ? name : `${prefix}${name}`,
+          sizeBytes: object.metadata?.size ?? 0,
+        };
+      });
     },
 
     async deleteObject(objectKey: string): Promise<void> {

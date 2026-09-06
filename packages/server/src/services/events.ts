@@ -9,6 +9,7 @@ import type {
   DeleteEventRequest,
   EventDto,
   EventsListQuery,
+  RevisionSnapshot,
   UpdateEventRequest,
 } from "@handoff/contracts";
 import type { EventRow, HandoffTransaction, RevisionOperation } from "@handoff/db";
@@ -71,11 +72,16 @@ export async function listEvents({
   const page = rows.slice(0, query.limit);
   const last = page[page.length - 1];
   // Every row on a page shares one data key; the wrapper resolves it once for this read.
-  const keys = withRequestKeyCache(deps.keys);
+  const scoped: ServiceDeps = { ...deps, keys: withRequestKeyCache(deps.keys) };
+  // One query for the page's current revisions. Each row's published attachments and its source
+  // quote live in that snapshot rather than in the projection, so the page decrypts them once.
+  const snapshots = await withTenantTransaction(scoped.db, { workspaceId }, (tx) =>
+    readCurrentSnapshots(tx, scoped, { workspaceId, childId, rows: page }),
+  );
   return {
-    // A page's source quotes would cost one revision read and one decrypt per row, so the list
-    // leaves them null; `getEvent` returns the quote for the entry the reader opened.
-    items: await Promise.all(page.map((row) => decryptToDto({ ...deps, keys }, row, null))),
+    items: await Promise.all(
+      page.map((row) => decryptToDto(scoped, row, snapshots.get(row.id) ?? null)),
+    ),
     nextCursor: rows.length > query.limit && last !== undefined ? encodeEventCursor(last) : null,
   };
 }
@@ -94,7 +100,7 @@ export async function getEvent({
     await authorizeChild(tx, { userId: actorUserId, workspaceId, childId });
     const row = await eventsRepository.findEventInChild(tx, workspaceId, childId, eventId);
     if (row === null) throw ApiHttpError.notFound("That entry is not available");
-    return decryptToDto(deps, row, await readSourceQuote(tx, deps, row));
+    return decryptToDto(deps, row, await readCurrentSnapshot(tx, deps, row));
   });
 }
 
@@ -205,8 +211,11 @@ async function publishChange({
     if (locked === null) throw ApiHttpError.notFound("That child is not available");
     const journalSeq = await eventsRepository.allocateJournalSeq(scoped, workspaceId, childId);
     const revisionId = randomUUID();
-    // The quote comes from the revision being replaced, so a correction keeps citing its source.
-    const sourceQuote = await readSourceQuote(scoped, deps, row);
+    // Carried over from the revision being replaced, so a correction keeps citing its source and
+    // keeps the attachments already published on this entry.
+    const current = await readCurrentSnapshot(scoped, deps, row);
+    const sourceQuote = current?.sourceQuote ?? null;
+    const readyAssetIds = current?.readyAssetIds ?? [];
 
     const updated = await eventsRepository.appendEventRevision(scoped, {
       workspaceId,
@@ -234,7 +243,7 @@ async function publishChange({
         contentCiphertext: await encryptRevisionSnapshot(deps.keys, {
           workspaceId,
           revisionId,
-          snapshot: revisionSnapshotOf(facts, sourceQuote),
+          snapshot: revisionSnapshotOf(facts, sourceQuote, readyAssetIds),
         }),
       },
     });
@@ -249,29 +258,29 @@ async function publishChange({
       entityId: eventId,
       requestId: deps.requestId,
     });
-    return toEventDto(updated, eventPayloadOf(facts), sourceQuote);
+    return toEventDto(updated, eventPayloadOf(facts), sourceQuote, readyAssetIds);
   });
 }
 
 async function decryptToDto(
   deps: ServiceDeps,
   row: EventRow,
-  sourceQuote: string | null,
+  snapshot: RevisionSnapshot | null,
 ): Promise<EventDto> {
   const payload = await decryptEventPayload(deps.keys, {
     workspaceId: row.workspaceId,
     eventId: row.id,
     envelope: row.payloadCiphertext,
   });
-  return toEventDto(row, payload, sourceQuote);
+  return toEventDto(row, payload, snapshot?.sourceQuote ?? null, snapshot?.readyAssetIds ?? []);
 }
 
-/** One event's revisions are a short list; the current one carries the quote to display. */
-async function readSourceQuote(
+/** One event's revisions are a short list; the current one carries what a reader is shown. */
+async function readCurrentSnapshot(
   tx: HandoffTransaction,
   deps: ServiceDeps,
   row: EventRow,
-): Promise<string | null> {
+): Promise<RevisionSnapshot | null> {
   const revisions = await eventsRepository.listRevisionsForEvent(
     tx,
     row.workspaceId,
@@ -280,10 +289,38 @@ async function readSourceQuote(
   );
   const current = revisions.find((revision) => revision.id === row.currentRevisionId);
   if (current === undefined) return null;
-  const snapshot = await decryptRevisionSnapshot(deps.keys, {
+  return decryptRevisionSnapshot(deps.keys, {
     workspaceId: row.workspaceId,
     revisionId: current.id,
     envelope: current.contentCiphertext,
   });
-  return snapshot.sourceQuote;
+}
+
+/** The current snapshot of every row on one page, keyed by event id, from one revision query. */
+async function readCurrentSnapshots(
+  tx: HandoffTransaction,
+  deps: ServiceDeps,
+  input: { workspaceId: string; childId: string; rows: readonly EventRow[] },
+): Promise<Map<string, RevisionSnapshot>> {
+  const revisions = await eventsRepository.listRevisionsByIds(
+    tx,
+    input.workspaceId,
+    input.childId,
+    input.rows.map((row) => row.currentRevisionId),
+  );
+  const byId = new Map(revisions.map((revision) => [revision.id, revision]));
+  const snapshots = new Map<string, RevisionSnapshot>();
+  for (const row of input.rows) {
+    const current = byId.get(row.currentRevisionId);
+    if (current === undefined) continue;
+    snapshots.set(
+      row.id,
+      await decryptRevisionSnapshot(deps.keys, {
+        workspaceId: input.workspaceId,
+        revisionId: current.id,
+        envelope: current.contentCiphertext,
+      }),
+    );
+  }
+  return snapshots;
 }

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildObjectKey, objectExtensionForMime } from "./object-key";
+import {
+  assetIdFromObjectKey,
+  buildNormalizedImageKey,
+  buildObjectKey,
+  objectExtensionForMime,
+  workspaceObjectPrefix,
+} from "./object-key";
 
 const WORKSPACE = "11111111-1111-4111-8111-111111111111";
 const CHILD = "22222222-2222-4222-8222-222222222222";
@@ -53,5 +59,40 @@ describe("objectExtensionForMime", () => {
   it("returns null rather than guessing", () => {
     expect(objectExtensionForMime("audio/ogg")).toBeNull();
     expect(objectExtensionForMime("")).toBeNull();
+  });
+});
+
+describe("buildNormalizedImageKey", () => {
+  it("does not collide with the raw upload it replaces, even for a JPEG", () => {
+    const parts = {
+      workspaceId: WORKSPACE,
+      childId: CHILD,
+      captureId: CAPTURE,
+      assetId: ASSET,
+    };
+    const raw = buildObjectKey({ ...parts, mime: "image/jpeg" });
+    const normalized = buildNormalizedImageKey(parts);
+    expect(normalized).toBe(`${WORKSPACE}/${CHILD}/${CAPTURE}/${ASSET}.normalized.jpg`);
+    expect(normalized).not.toBe(raw);
+  });
+});
+
+describe("assetIdFromObjectKey", () => {
+  it("recovers the asset id from either key this server generates", () => {
+    const parts = { workspaceId: WORKSPACE, childId: CHILD, captureId: CAPTURE, assetId: ASSET };
+    expect(assetIdFromObjectKey(buildObjectKey({ ...parts, mime: "image/png" }))).toBe(ASSET);
+    expect(assetIdFromObjectKey(buildNormalizedImageKey(parts))).toBe(ASSET);
+  });
+
+  it("returns null for a key this server did not build", () => {
+    expect(assetIdFromObjectKey("stray-object.jpg")).toBeNull();
+    expect(assetIdFromObjectKey(`${WORKSPACE}/${CHILD}/${CAPTURE}/not-a-uuid.jpg`)).toBeNull();
+  });
+});
+
+describe("workspaceObjectPrefix", () => {
+  it("ends in a separator so it cannot match a neighbouring workspace id", () => {
+    expect(workspaceObjectPrefix(WORKSPACE)).toBe(`${WORKSPACE}/`);
+    expect(() => workspaceObjectPrefix("..")).toThrow();
   });
 });

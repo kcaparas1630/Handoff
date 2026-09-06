@@ -2,6 +2,7 @@
 // configuration, and then does nothing but claim leased jobs. It serves no HTTP traffic.
 import {
   cleanupAudio,
+  cleanupUploads,
   createJobRunner,
   createWorkerRuntime,
   loadServerEnv,
@@ -10,6 +11,7 @@ import {
   requireWorkerEnv,
   scheduleReconciliation,
   ServerEnvError,
+  validateMedia,
 } from "@handoff/server";
 
 const EXIT_CONFIGURATION = 78;
@@ -24,8 +26,10 @@ async function main(): Promise<void> {
     runtime,
     handlers: {
       process_capture: processCapture,
+      validate_media: validateMedia,
       reconcile_clerk: reconcileClerk,
       cleanup_audio: cleanupAudio,
+      cleanup_uploads: cleanupUploads,
     },
     concurrency: env.workerConcurrency,
     leaseMs: env.workerLeaseSeconds * 1000,

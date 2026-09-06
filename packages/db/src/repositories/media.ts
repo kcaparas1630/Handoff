@@ -1,8 +1,10 @@
-import { and, asc, eq, inArray, isNotNull, lt, lte, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, lt, lte, ne, notInArray, sql } from "drizzle-orm";
 import { captures, mediaAssets } from "../schema";
 import type { HandoffTransaction } from "../types/database";
+import type { MediaKind } from "../types/enums";
 import type {
   MediaAssetLookup,
+  MediaAssetReady,
   MediaAssetRow,
   MediaUploadResult,
   NewMediaAsset,
@@ -74,10 +76,13 @@ export async function listAssetsForCapture(
     .orderBy(asc(mediaAssets.createdAt), asc(mediaAssets.id));
 }
 
-/** Enforces the per-capture attachment limit before another allocation is issued. */
+/**
+ * Enforces the per-capture attachment limit before another allocation is issued. A rejected or
+ * deleted upload does not occupy a slot: the caregiver may try that attachment again.
+ */
 export async function countAssetsForCapture(
   tx: HandoffTransaction,
-  input: { workspaceId: string; childId: string; captureId: string },
+  input: { workspaceId: string; childId: string; captureId: string; kinds?: readonly MediaKind[] },
 ): Promise<number> {
   const [row] = await tx
     .select({ count: sql<number>`count(*)::int` })
@@ -87,7 +92,8 @@ export async function countAssetsForCapture(
         eq(mediaAssets.workspaceId, input.workspaceId),
         eq(mediaAssets.childId, input.childId),
         eq(mediaAssets.captureId, input.captureId),
-        ne(mediaAssets.status, "deleted"),
+        notInArray(mediaAssets.status, ["rejected", "deleted"]),
+        input.kinds === undefined ? undefined : inArray(mediaAssets.kind, [...input.kinds]),
       ),
     );
   return row?.count ?? 0;
@@ -126,10 +132,14 @@ export async function markAssetUploaded(
 /**
  * Publishes an asset after byte inspection. The cleanup_state predicate is what makes this row
  * the licence to settle the reservation: it can only be crossed once.
+ *
+ * A normalized image is written to a new object before this runs, so the key, size, and duration
+ * the worker verified replace what the client declared. `expectedVersion` lets the worker refuse
+ * to publish a row another attempt has touched since it read the bytes.
  */
 export async function markAssetReady(
   tx: HandoffTransaction,
-  input: { workspaceId: string; assetId: string; verifiedMime: string },
+  input: MediaAssetReady,
 ): Promise<MediaAssetRow | null> {
   const [row] = await tx
     .update(mediaAssets)
@@ -137,6 +147,9 @@ export async function markAssetReady(
       status: "ready",
       verifiedMime: input.verifiedMime,
       cleanupState: "quota_released",
+      ...(input.objectKey === undefined ? {} : { objectKey: input.objectKey }),
+      ...(input.sizeBytes === undefined ? {} : { sizeBytes: input.sizeBytes }),
+      ...(input.durationMs === undefined ? {} : { durationMs: input.durationMs }),
       updatedAt: sql`now()`,
       version: sql`${mediaAssets.version} + 1`,
     })
@@ -146,6 +159,9 @@ export async function markAssetReady(
         eq(mediaAssets.id, input.assetId),
         eq(mediaAssets.status, "uploaded"),
         eq(mediaAssets.cleanupState, "none"),
+        input.expectedVersion === undefined
+          ? undefined
+          : eq(mediaAssets.version, input.expectedVersion),
       ),
     )
     .returning();
@@ -260,6 +276,7 @@ export async function listExpiredPendingAssets(
   tx: HandoffTransaction,
   now: Date,
   limit: number,
+  kinds?: readonly MediaKind[],
 ): Promise<MediaAssetRow[]> {
   return tx
     .select()
@@ -269,6 +286,7 @@ export async function listExpiredPendingAssets(
         eq(mediaAssets.status, "pending_upload"),
         isNotNull(mediaAssets.expiresAt),
         lte(mediaAssets.expiresAt, now),
+        kinds === undefined ? undefined : inArray(mediaAssets.kind, [...kinds]),
       ),
     )
     .orderBy(asc(mediaAssets.expiresAt), asc(mediaAssets.id))

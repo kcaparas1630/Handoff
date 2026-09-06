@@ -13,10 +13,14 @@ import {
 import { scheduleReconciliation } from "../../packages/server/src/jobs/reconcile-clerk";
 import { ProviderError } from "../../packages/server/src/lib/provider-error";
 import { createCapture, getCapture } from "../../packages/server/src/services/captures";
+import { getEvent } from "../../packages/server/src/services/events";
 import { processCaptureDedupeKey } from "../../packages/server/src/services/job-keys";
+import { completeAssetUpload, createAssetUpload } from "../../packages/server/src/services/media";
 import { revokeMember } from "../../packages/server/src/services/memberships";
 import { completeUpload, retryCapture } from "../../packages/server/src/services/uploads";
 import { createJobHarness } from "./support/job-harness";
+import { candidate, confirmManualCapture } from "./support/journal-fixtures";
+import { jpegImage } from "./support/media-fixtures";
 import {
   createHarness,
   grantChild,
@@ -350,6 +354,78 @@ describeIntegration("worker recovery", () => {
     const actions = await readAuditActions(memberId);
     expect(actions).toContain("membership.clerk_removal_pending");
     expect(actions).toContain("membership.clerk_removal_reconciled");
+  });
+
+  it("re-normalizes a photo after a crash between writing the object and publishing it", async () => {
+    const lines = [candidate({ kind: "milestone" })];
+    const confirmed = await confirmManualCapture(harness, {
+      actorUserId: ownerId,
+      childId,
+      candidates: lines,
+    });
+    const captureId = confirmed.capture.id;
+    const eventId = confirmed.events[0]?.id ?? "";
+
+    const photo = await jpegImage({ width: 900, height: 600 });
+    const created = await createAssetUpload({
+      deps: harness.deps,
+      actorUserId: ownerId,
+      captureId,
+      input: {
+        kind: "image",
+        declaredMime: "image/jpeg",
+        declaredSizeBytes: photo.bytes.byteLength,
+      },
+    });
+    const rawKey =
+      (
+        await withTenantTransaction(harness.deps.db, { workspaceId }, (tx) =>
+          mediaRepository.findMediaAssetInWorkspace(tx, workspaceId, created.asset.id),
+        )
+      )?.objectKey ?? "";
+    jobs.storage.put(rawKey, photo.bytes, "image/jpeg");
+    await completeAssetUpload({
+      deps: harness.deps,
+      actorUserId: ownerId,
+      assetId: created.asset.id,
+      input: { sizeBytes: photo.bytes.byteLength },
+    });
+
+    // The worker wrote the normalized object and died before its ready transaction committed.
+    const realPutObject = jobs.storage.putObject.bind(jobs.storage);
+    jobs.storage.putObject = async (objectKey, bytes, contentType) => {
+      await realPutObject(objectKey, bytes, contentType);
+      throw new Error("worker crashed after writing the normalized object");
+    };
+    await jobs.runner.runOnce();
+    jobs.storage.putObject = realPutObject;
+
+    const crashed = await withTenantTransaction(harness.deps.db, { workspaceId }, (tx) =>
+      mediaRepository.findMediaAssetInWorkspace(tx, workspaceId, created.asset.id),
+    );
+    expect(crashed?.status).toBe("uploaded");
+    expect(crashed?.objectKey).toBe(rawKey);
+    // The raw upload is still there, which is the only reason the retry can re-read the bytes.
+    expect(jobs.storage.has(rawKey)).toBe(true);
+
+    advance(MINUTE_MS);
+    await jobs.runner.runOnce();
+
+    const published = await withTenantTransaction(harness.deps.db, { workspaceId }, (tx) =>
+      mediaRepository.findMediaAssetInWorkspace(tx, workspaceId, created.asset.id),
+    );
+    expect(published?.status).toBe("ready");
+    expect(published?.objectKey).not.toBe(rawKey);
+    // One object, not two: the retry replaced its own half-finished write and removed the raw file.
+    expect(jobs.storage.has(rawKey)).toBe(false);
+    expect(jobs.storage.has(published?.objectKey ?? "")).toBe(true);
+
+    const revisions = await harness.admin.db.execute<{ operation: string }>(
+      sql`select operation from handoff.event_revisions where event_id = ${eventId} order by journal_seq`,
+    );
+    expect([...revisions].map((row) => row.operation)).toEqual(["created", "media_updated"]);
+    const event = await getEvent({ deps: harness.deps, actorUserId: ownerId, eventId });
+    expect(event.readyAssetIds).toEqual([created.asset.id]);
   });
 
   it("fails closed on a decryption failure and never writes a plaintext fallback", async () => {

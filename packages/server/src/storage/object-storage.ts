@@ -22,6 +22,12 @@ export interface StoredObjectHead {
   contentType: string | null;
 }
 
+/** One entry of a prefix listing, which is how cleanup finds objects no asset row claims. */
+export interface StoredObjectSummary {
+  objectKey: string;
+  sizeBytes: number;
+}
+
 export interface ObjectStorage {
   readonly provider: string;
   readonly bucket: string;
@@ -33,6 +39,16 @@ export interface ObjectStorage {
   createReadUrl(objectKey: string, expiresInSeconds: number): Promise<string>;
   /** Worker only. Refuses anything larger than `maxBytes` instead of buffering it. */
   readObject(objectKey: string, maxBytes: number): Promise<Buffer>;
+  /**
+   * Worker only. Writes server-produced bytes, such as a normalized image, to a key the server
+   * generated. Never an upsert: the caller deletes first when it means to replace an object.
+   */
+  putObject(objectKey: string, bytes: Buffer, contentType: string): Promise<void>;
+  /**
+   * Worker only. Objects stored under `prefix`, bounded by `limit`. Reconciliation needs it
+   * because an upload that never reported completion leaves an object no database row names.
+   */
+  listObjects(prefix: string, limit: number): Promise<StoredObjectSummary[]>;
   /** Idempotent: deleting an object that is already gone is a success. */
   deleteObject(objectKey: string): Promise<void>;
 }

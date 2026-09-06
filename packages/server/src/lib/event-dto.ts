@@ -62,16 +62,20 @@ export function revisionEventOf(facts: EventFacts): RevisionEvent {
   };
 }
 
-/** Media asset ids stay empty until milestone 4; a snapshot never holds a credential or URL. */
+/**
+ * The ready image and video ids a revision publishes, and nothing else about them: a snapshot
+ * never holds a bucket, an object key, or a signed URL (docs/pii-encryption.md).
+ */
 export function revisionSnapshotOf(
   facts: EventFacts,
   sourceQuote: string | null,
+  readyAssetIds: readonly string[] = [],
 ): RevisionSnapshot {
   return {
     schemaVersion: 1,
     event: revisionEventOf(facts),
     sourceQuote,
-    readyAssetIds: [],
+    readyAssetIds: [...readyAssetIds],
   };
 }
 
@@ -79,7 +83,8 @@ export function toEventDto(
   row: EventRow,
   payload: EventPayload,
   sourceQuote: string | null,
-  // Ready attachments come from the current revision snapshot; milestone 4 publishes them.
+  // Ready attachments come from the event's current revision snapshot, which the media
+  // validation job rewrites when an attachment is published (data contract §3).
   readyAssetIds: readonly string[] = [],
 ): EventDto {
   return {

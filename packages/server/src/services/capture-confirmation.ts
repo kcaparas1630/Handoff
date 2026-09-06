@@ -2,7 +2,12 @@
 // lock the child, allocate a sequence per candidate, write each event with its first revision,
 // then close the capture (architecture §5).
 import { randomUUID } from "node:crypto";
-import { capturesRepository, eventsRepository, infrastructureRepository } from "@handoff/db";
+import {
+  capturesRepository,
+  eventsRepository,
+  infrastructureRepository,
+  mediaRepository,
+} from "@handoff/db";
 import { canCreateCapture } from "@handoff/domain";
 import type {
   ConfirmCaptureRequest,
@@ -18,6 +23,7 @@ import { inTenantTransaction } from "../lib/in-tenant-transaction";
 import {
   decryptCaptureDraft,
   decryptEventPayload,
+  decryptRevisionSnapshot,
   encryptCaptureDraft,
   encryptEventPayload,
   encryptRevisionSnapshot,
@@ -90,6 +96,9 @@ export async function confirmCapture({
     const reviewed = mergeReviewedCandidates(draft.candidates, input);
     assertCandidatesAreValid(reviewed.published);
 
+    // An attachment validated while the draft was under review is published with the events it
+    // belongs to, rather than waiting for a `media_updated` revision (architecture §6).
+    const readyAssetIds = await readyAttachmentIds(scoped, capture);
     const events: EventDto[] = [];
     for (const candidate of reviewed.published) {
       events.push(
@@ -97,6 +106,7 @@ export async function confirmCapture({
           capture,
           actorUserId,
           candidate,
+          readyAssetIds,
         }),
       );
     }
@@ -179,10 +189,31 @@ function mergeReviewedCandidates(
   return { stored, published };
 }
 
+/**
+ * By default every event from a one-child capture references its attachments (architecture §6).
+ * Only ready photos and videos count: an upload still being inspected, or one that was rejected,
+ * must never appear on a published event.
+ */
+async function readyAttachmentIds(tx: HandoffTransaction, capture: CaptureRow): Promise<string[]> {
+  const assets = await mediaRepository.listAssetsForCapture(tx, {
+    workspaceId: capture.workspaceId,
+    childId: capture.childId,
+    captureId: capture.id,
+  });
+  return assets
+    .filter((asset) => asset.status === "ready" && asset.kind !== "audio")
+    .map((asset) => asset.id);
+}
+
 async function publishCandidate(
   tx: HandoffTransaction,
   deps: ServiceDeps,
-  input: { capture: CaptureRow; actorUserId: string; candidate: DraftCandidate },
+  input: {
+    capture: CaptureRow;
+    actorUserId: string;
+    candidate: DraftCandidate;
+    readyAssetIds: readonly string[];
+  },
 ): Promise<EventDto> {
   const { capture, candidate } = input;
   const journalSeq = await eventsRepository.allocateJournalSeq(
@@ -239,13 +270,18 @@ async function publishCandidate(
       contentCiphertext: await encryptRevisionSnapshot(deps.keys, {
         workspaceId: capture.workspaceId,
         revisionId,
-        snapshot: revisionSnapshotOf(facts, candidate.sourceQuote),
+        snapshot: revisionSnapshotOf(facts, candidate.sourceQuote, input.readyAssetIds),
       }),
       sourceStart: candidate.sourceStart,
       sourceEnd: candidate.sourceEnd,
     },
   });
-  return toEventDto(written.event, eventPayloadOf(facts), candidate.sourceQuote);
+  return toEventDto(
+    written.event,
+    eventPayloadOf(facts),
+    candidate.sourceQuote,
+    input.readyAssetIds,
+  );
 }
 
 /**
@@ -270,6 +306,15 @@ async function replayConfirmation(
   rows.sort(
     (a, b) => (order.get(a.sourceCandidateId) ?? 0) - (order.get(b.sourceCandidateId) ?? 0),
   );
+  // Attachments may have been published since the original confirmation, so a replay reports the
+  // current revisions rather than what the first response happened to contain.
+  const revisions = await eventsRepository.listRevisionsByIds(
+    tx,
+    capture.workspaceId,
+    capture.childId,
+    rows.map((row) => row.currentRevisionId),
+  );
+  const revisionsById = new Map(revisions.map((revision) => [revision.id, revision]));
 
   const events: EventDto[] = [];
   for (const row of rows) {
@@ -278,7 +323,23 @@ async function replayConfirmation(
       eventId: row.id,
       envelope: row.payloadCiphertext,
     });
-    events.push(toEventDto(row, payload, quotes.get(row.sourceCandidateId) ?? null));
+    const current = revisionsById.get(row.currentRevisionId);
+    const snapshot =
+      current === undefined
+        ? null
+        : await decryptRevisionSnapshot(deps.keys, {
+            workspaceId: row.workspaceId,
+            revisionId: current.id,
+            envelope: current.contentCiphertext,
+          });
+    events.push(
+      toEventDto(
+        row,
+        payload,
+        quotes.get(row.sourceCandidateId) ?? null,
+        snapshot?.readyAssetIds ?? [],
+      ),
+    );
   }
   return { capture: await toCaptureDto(deps, capture, true), events };
 }

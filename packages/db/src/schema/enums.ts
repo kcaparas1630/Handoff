@@ -135,6 +135,7 @@ export const jobKind = handoffSchema.enum("job_kind", [
   "validate_media",
   "reconcile_clerk",
   "cleanup_audio",
+  "cleanup_uploads",
   "purge_child",
   "purge_workspace",
 ]);

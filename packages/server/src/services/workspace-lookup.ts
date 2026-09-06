@@ -9,6 +9,7 @@ import {
   handoffsRepository,
   identityRepository,
   invitationsRepository,
+  mediaRepository,
   withIdentityTransaction,
   withTenantTransaction,
 } from "@handoff/db";
@@ -84,6 +85,25 @@ export async function resolveEventLocation({
     if (found !== null) return found;
   }
   throw ApiHttpError.notFound("That entry is not available");
+}
+
+/** `/v1/assets/:assetId` names neither a workspace nor a child; both come from the asset row. */
+export async function resolveAssetLocation({
+  deps,
+  actorUserId,
+  assetId,
+}: {
+  deps: ServiceDeps;
+  actorUserId: string;
+  assetId: string;
+}): Promise<{ workspaceId: string; childId: string }> {
+  for (const workspaceId of await listCallerWorkspaceIds(deps, actorUserId)) {
+    const found = await withTenantTransaction(deps.db, { workspaceId }, (tx) =>
+      mediaRepository.findMediaAssetInWorkspace(tx, workspaceId, assetId),
+    );
+    if (found !== null) return { workspaceId, childId: found.childId };
+  }
+  throw ApiHttpError.notFound("That attachment is not available");
 }
 
 /** A brief belongs to one recipient, so another user's id simply finds nothing anywhere. */

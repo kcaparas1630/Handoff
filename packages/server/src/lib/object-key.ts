@@ -45,11 +45,43 @@ export interface ObjectKeyParts {
  * mean the caller skipped validation, and a guessed key can address another tenant's object.
  */
 export function buildObjectKey(parts: ObjectKeyParts): string {
+  const extension = objectExtensionForMime(parts.mime);
+  if (extension === null) throw new Error("no object extension is allowed for that content type");
+  return `${assetPathPrefix(parts)}.${extension}`;
+}
+
+/**
+ * Where the normalized copy of a photo is published. It is deliberately a different key from the
+ * raw upload, which may already end in `.jpg`: the worker writes the normalized object, publishes
+ * it, and only then deletes the raw one, so a crash in between leaves the source readable.
+ */
+export function buildNormalizedImageKey(parts: Omit<ObjectKeyParts, "mime">): string {
+  return `${assetPathPrefix(parts)}.normalized.jpg`;
+}
+
+/** Every object belonging to one workspace lives under this prefix, which cleanup reconciles. */
+export function workspaceObjectPrefix(workspaceId: string): string {
+  if (!UUID.test(workspaceId)) throw new Error("object key parts must be UUIDs");
+  return `${workspaceId}/`;
+}
+
+/**
+ * The asset id a key was generated for, or null for a key this server did not build. Cleanup uses
+ * it to tell an orphaned object from one whose row simply has not been read yet.
+ */
+export function assetIdFromObjectKey(objectKey: string): string | null {
+  const segments = objectKey.split("/");
+  if (segments.length !== 4) return null;
+  const last = segments[3];
+  if (last === undefined) return null;
+  const assetId = last.split(".")[0] ?? "";
+  return UUID.test(assetId) ? assetId : null;
+}
+
+function assetPathPrefix(parts: Omit<ObjectKeyParts, "mime">): string {
   const ids = [parts.workspaceId, parts.childId, parts.captureId, parts.assetId];
   for (const id of ids) {
     if (!UUID.test(id)) throw new Error("object key parts must be UUIDs");
   }
-  const extension = objectExtensionForMime(parts.mime);
-  if (extension === null) throw new Error("no object extension is allowed for that content type");
-  return `${ids.join("/")}.${extension}`;
+  return ids.join("/");
 }

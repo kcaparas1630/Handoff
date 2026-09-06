@@ -64,14 +64,18 @@ export const cleanupAudio: JobHandler = async (context) => {
   return { status: "completed" };
 };
 
-/** Upload tokens that were never used: the object may or may not exist, the reservation does. */
+/**
+ * Recording upload tokens that were never used: the object may or may not exist, the reservation
+ * does. Attachments expire the same way but belong to `cleanup_uploads`, which also reconciles
+ * objects against rows, so the two sweeps split by kind rather than racing over the same rows.
+ */
 async function deleteExpiredAllocations(
   runtime: WorkerRuntime,
   workspaceId: string,
   now: Date,
 ): Promise<void> {
   const expired = await withTenantTransaction(runtime.db, { workspaceId }, (tx) =>
-    mediaRepository.listExpiredPendingAssets(tx, now, BATCH_LIMIT),
+    mediaRepository.listExpiredPendingAssets(tx, now, BATCH_LIMIT, ["audio"]),
   );
   for (const asset of expired) await purgeAsset(runtime, asset);
 }

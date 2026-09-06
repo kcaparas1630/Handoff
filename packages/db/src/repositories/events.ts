@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { children, eventRevisions, events } from "../schema";
 import type { HandoffTransaction } from "../types/database";
 import type { EventKind } from "../types/enums";
@@ -201,6 +201,29 @@ export async function listRevisionsInWindow(
       ),
     )
     .orderBy(asc(eventRevisions.journalSeq));
+}
+
+/**
+ * The named revisions of one child, in one query. A timeline page needs each row's current
+ * revision for its snapshot, and one query per event would make that page N+1 round trips.
+ */
+export async function listRevisionsByIds(
+  tx: HandoffTransaction,
+  workspaceId: string,
+  childId: string,
+  revisionIds: readonly string[],
+): Promise<EventRevisionRow[]> {
+  if (revisionIds.length === 0) return [];
+  return tx
+    .select()
+    .from(eventRevisions)
+    .where(
+      and(
+        eq(eventRevisions.workspaceId, workspaceId),
+        eq(eventRevisions.childId, childId),
+        inArray(eventRevisions.id, [...revisionIds]),
+      ),
+    );
 }
 
 export async function listRevisionsForEvent(

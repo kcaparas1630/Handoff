@@ -3,7 +3,12 @@
 // a provider call (architecture §4).
 import { randomUUID } from "node:crypto";
 import { AUDIO_MAX_BYTES } from "@handoff/contracts";
-import { capturesRepository, withTenantTransaction } from "@handoff/db";
+import {
+  capturesRepository,
+  mediaRepository,
+  storageQuotaRepository,
+  withTenantTransaction,
+} from "@handoff/db";
 import { canCreateCapture } from "@handoff/domain";
 import type { CaptureDraft } from "@handoff/contracts";
 import type { CaptureRow, CaptureStatus, HandoffDatabase, MediaAssetRow } from "@handoff/db";
@@ -185,7 +190,32 @@ async function transcribeIfNeeded(context: JobContext, work: CaptureWork): Promi
   work.draft = { ...work.draft, rawTranscript: result.transcript };
   work.capture = written;
   await context.saveCheckpoint(TRANSCRIBED_CHECKPOINT);
+  await settleAudioReservation(context.runtime, asset);
   return result.transcript;
+}
+
+/**
+ * Transcription is what validates a recording, so it is also what settles its reservation. This
+ * closes the milestone 3 limitation where audio bytes stayed in `storage_reserved_bytes` for the
+ * asset's whole life. `markAssetReady` crosses the cleanup marker, which is the once-only licence
+ * to move the counter, so a retried attempt that reaches this again moves nothing.
+ */
+async function settleAudioReservation(runtime: WorkerRuntime, asset: MediaAssetRow): Promise<void> {
+  const workspaceId = asset.workspaceId;
+  await withTenantTransaction(runtime.db, { workspaceId }, async (tx) => {
+    const ready = await mediaRepository.markAssetReady(tx, {
+      workspaceId,
+      assetId: asset.id,
+      // The transcription provider decoded these bytes, which is the verification audio gets.
+      verifiedMime: asset.declaredMime,
+    });
+    if (ready === null) return;
+    await storageQuotaRepository.settleStorageBytes(tx, {
+      workspaceId,
+      reservedBytes: ready.reservedBytes,
+      actualBytes: ready.sizeBytes ?? ready.reservedBytes,
+    });
+  });
 }
 
 /** Stage two. One model call, then one transaction that publishes the reviewable draft. */

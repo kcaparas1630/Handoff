@@ -114,6 +114,7 @@ export type {
 } from "./types/care";
 export type {
   MediaAssetLookup,
+  MediaAssetReady,
   MediaAssetRow,
   MediaUploadResult,
   NewMediaAsset,

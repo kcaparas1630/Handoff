@@ -4,8 +4,10 @@
 import { createDbClient } from "../../../packages/db/src/client";
 import { createJobRunner } from "../../../packages/server/src/jobs/runner";
 import { cleanupAudio } from "../../../packages/server/src/jobs/cleanup-audio";
+import { cleanupUploads } from "../../../packages/server/src/jobs/cleanup-uploads";
 import { processCapture } from "../../../packages/server/src/jobs/process-capture";
 import { reconcileClerk } from "../../../packages/server/src/jobs/reconcile-clerk";
+import { validateMedia } from "../../../packages/server/src/jobs/validate-media";
 import { createFakeExtraction } from "./fake-extraction";
 import { createFakeObjectStorage } from "./fake-object-storage";
 import { createFakeTranscription } from "./fake-transcription";
@@ -68,8 +70,10 @@ export function createJobHarness(
     runtime,
     handlers: {
       process_capture: processCapture,
+      validate_media: validateMedia,
       reconcile_clerk: reconcileClerk,
       cleanup_audio: cleanupAudio,
+      cleanup_uploads: cleanupUploads,
     },
     concurrency: options.concurrency ?? 2,
     leaseMs: options.leaseMs ?? 30_000,

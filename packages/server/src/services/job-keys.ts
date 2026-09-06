@@ -6,6 +6,11 @@ export function processCaptureDedupeKey(captureId: string): string {
   return `process_capture:${captureId}`;
 }
 
+/** One validation per uploaded attachment, so a duplicate completion callback queues nothing. */
+export function validateMediaDedupeKey(assetId: string): string {
+  return `validate_media:${assetId}`;
+}
+
 /** Keyed by the audit row, so a later failure for the same entity still gets its own job. */
 export function reconcileClerkDedupeKey(
   entityType: string,
@@ -18,4 +23,9 @@ export function reconcileClerkDedupeKey(
 /** One audio cleanup per workspace per day; the handler re-enqueues tomorrow's before it exits. */
 export function cleanupAudioDedupeKey(workspaceId: string, day: Date): string {
   return `cleanup_audio:${workspaceId}:${day.toISOString().slice(0, 10)}`;
+}
+
+/** One upload sweep per workspace per day; the handler re-enqueues tomorrow's before it exits. */
+export function cleanupUploadsDedupeKey(workspaceId: string, day: Date): string {
+  return `cleanup_uploads:${workspaceId}:${day.toISOString().slice(0, 10)}`;
 }

@@ -50,6 +50,20 @@ export interface MediaUploadResult {
   durationMs?: number | null;
 }
 
+/**
+ * What validation publishes. The object key moves when a normalized image replaces the raw upload;
+ * `expectedVersion` refuses the write when another attempt has since touched the row.
+ */
+export interface MediaAssetReady {
+  workspaceId: string;
+  assetId: string;
+  verifiedMime: string;
+  objectKey?: string;
+  sizeBytes?: number;
+  durationMs?: number | null;
+  expectedVersion?: number;
+}
+
 export interface MediaAssetLookup {
   storageProvider: string;
   bucket: string;

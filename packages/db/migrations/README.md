@@ -19,6 +19,7 @@ Drizzle numbers migrations from `0000`. The roadmap names them from `0001`.
 | `0003_journal_access.sql` | — | Grants and policies for those six tables, plus the children lookup policy |
 | `0004_media_and_jobs.sql` | `0004_media_and_jobs.sql` | Media assets and the durable job queue |
 | `0005_media_and_jobs_access.sql` | — | Grants, tenant policy for media, and the dispatcher role and queue policies |
+| `0006_cleanup_uploads_job.sql` | — | Adds the `cleanup_uploads` job kind for the milestone 4 upload and orphan-object sweep |
 
 `0000_identity.sql` is generated, then hand-reordered so tables are created in dependency order
 (`users` and `workspaces`, then `data_keys`, then children, then invitations) and so the unique
@@ -51,6 +52,10 @@ exactly as generated, so `pnpm db:generate` still reports no drift.
 
 `0005_media_and_jobs_access.sql` is written by hand for the same reason as the other access
 migrations.
+
+`0006_cleanup_uploads_job.sql` is generated and renamed. It is a single `ALTER TYPE … ADD VALUE`,
+which PostgreSQL 12 and later accept inside a transaction as long as the new value is not used in
+the same transaction; nothing else in the file reads it.
 
 ## Tenant-scoped and identity-scoped tables
 

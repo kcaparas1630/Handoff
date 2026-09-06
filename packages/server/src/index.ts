@@ -50,6 +50,7 @@ export { createSupabaseStorage } from "./storage/supabase-storage";
 export type {
   ObjectStorage,
   StoredObjectHead,
+  StoredObjectSummary,
   UploadAuthorizationRequest,
   UploadAuthorizationResult,
 } from "./storage/object-storage";
@@ -66,12 +67,31 @@ export { validateExtractionSemantics } from "./ai/lib/validate-extraction";
 export { buildDraftCandidates } from "./jobs/lib/draft-candidates";
 export { ProviderError } from "./lib/provider-error";
 export type { ProviderErrorCode } from "./lib/provider-error";
-export { buildObjectKey, objectExtensionForMime } from "./lib/object-key";
+export {
+  assetIdFromObjectKey,
+  buildNormalizedImageKey,
+  buildObjectKey,
+  objectExtensionForMime,
+  workspaceObjectPrefix,
+} from "./lib/object-key";
 
 export { createJobRunner } from "./jobs/runner";
 export { processCapture } from "./jobs/process-capture";
 export { reconcileClerk, scheduleReconciliation } from "./jobs/reconcile-clerk";
 export { cleanupAudio, scheduleAudioCleanup } from "./jobs/cleanup-audio";
+export { cleanupUploads, scheduleUploadCleanup } from "./jobs/cleanup-uploads";
+export { validateMedia } from "./jobs/validate-media";
+export { inspectMedia, isRejected } from "./media/inspect";
+export type { InspectedMedia, MediaInspection, MediaRejection } from "./media/inspect";
+export { normalizeImage, NORMALIZED_MAX_EDGE, NORMALIZED_MIME } from "./media/normalize-image";
+export { inspectMp4Container } from "./media/lib/mp4-duration";
+export {
+  attachmentLimitsFor,
+  attachmentLimitsForAsset,
+  IMAGE_LIMITS,
+  VIDEO_LIMITS,
+} from "./media/lib/attachment-limits";
+export type { AttachmentLimits } from "./media/lib/attachment-limits";
 export type { JobContext, JobHandler, JobOutcome, JobRunner, JobRunnerOptions } from "./types/jobs";
 
 export { ApiHttpError, toErrorResponse } from "./http/errors";
@@ -113,6 +133,7 @@ export { applyAcceptedInvitation } from "./services/invitation-acceptance";
 export type { InvitationApplication } from "./services/invitation-acceptance";
 export { listMembers, refreshMembershipIfStale, revokeMember } from "./services/memberships";
 export {
+  resolveAssetLocation,
   resolveBriefWorkspace,
   resolveCaptureWorkspace,
   resolveChildWorkspace,
@@ -122,9 +143,17 @@ export {
 export { createCapture, getCapture, updateCaptureDraft } from "./services/captures";
 export { completeUpload, retryCapture } from "./services/uploads";
 export {
+  completeAssetUpload,
+  createAssetUpload,
+  getAssetReadUrl,
+  listAssetsForEvent,
+} from "./services/media";
+export {
   cleanupAudioDedupeKey,
+  cleanupUploadsDedupeKey,
   processCaptureDedupeKey,
   reconcileClerkDedupeKey,
+  validateMediaDedupeKey,
 } from "./services/job-keys";
 export { confirmCapture } from "./services/capture-confirmation";
 export { correctEvent, deleteEvent, getEvent, listEvents } from "./services/events";
