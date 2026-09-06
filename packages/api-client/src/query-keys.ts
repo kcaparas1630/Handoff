@@ -19,4 +19,15 @@ export const queryKeys = {
     ["invitations", scope(userId), scope(workspaceId)] as const,
   caregivers: (userId: string | null, childId: string | null) =>
     ["caregivers", scope(userId), scope(childId)] as const,
+  overview: (userId: string | null, childId: string | null) =>
+    ["overview", scope(userId), scope(childId)] as const,
+  // A kind filter is appended by the hook, so invalidating this prefix refreshes every filter.
+  events: (userId: string | null, childId: string | null) =>
+    ["events", scope(userId), scope(childId)] as const,
+  capture: (userId: string | null, captureId: string | null) =>
+    ["capture", scope(userId), scope(captureId)] as const,
+  care: (userId: string | null, childId: string | null) =>
+    ["care", scope(userId), scope(childId)] as const,
+  brief: (userId: string | null, briefId: string | null) =>
+    ["brief", scope(userId), scope(briefId)] as const,
 };

@@ -5,7 +5,7 @@ export type LabeledTextInputProps = {
   placeholder?: string;
   /** Short explanation shown under the field, e.g. an accepted format. */
   hint?: string;
-  keyboardType?: "default" | "email-address" | "number-pad";
+  keyboardType?: "default" | "email-address" | "number-pad" | "decimal-pad";
   autoCapitalize?: "none" | "words" | "sentences";
   autoComplete?: "email" | "one-time-code" | "off";
   isEditable?: boolean;

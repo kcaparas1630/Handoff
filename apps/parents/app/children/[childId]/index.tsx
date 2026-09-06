@@ -1,12 +1,36 @@
-import { ChildProfileScreen } from "@handoff/features";
+import { useChild } from "@handoff/api-client";
+import { CareDashboardScreen } from "@handoff/features";
 import { Screen, StatusMessage } from "@handoff/ui";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback } from "react";
 
-export default function ChildProfileRoute() {
+import { flavor } from "../../../src/flavor";
+
+export default function ChildDashboardRoute() {
   const router = useRouter();
   const { childId } = useLocalSearchParams<{ childId: string }>();
-  const goBack = useCallback(() => router.back(), [router]);
+  const child = useChild(childId ?? null);
+
+  const openHandoff = useCallback(
+    (id: string) =>
+      router.push({ pathname: "/children/[childId]/handoff", params: { childId: id } }),
+    [router],
+  );
+  const openJournal = useCallback(
+    (id: string) =>
+      router.push({ pathname: "/children/[childId]/journal", params: { childId: id } }),
+    [router],
+  );
+  const openProfile = useCallback(
+    (id: string) =>
+      router.push({ pathname: "/children/[childId]/profile", params: { childId: id } }),
+    [router],
+  );
+  const openEvent = useCallback(
+    (eventId: string) =>
+      router.push({ pathname: "/events/[eventId]", params: { eventId, childId: childId ?? "" } }),
+    [router, childId],
+  );
 
   if (!childId) {
     return (
@@ -19,5 +43,18 @@ export default function ChildProfileRoute() {
     );
   }
 
-  return <ChildProfileScreen childId={childId} onBack={goBack} />;
+  return (
+    <>
+      {/* Identity context stays in the navigation bar while reviewing and recording. */}
+      <Stack.Screen options={{ title: child.data?.name ?? "Child" }} />
+      <CareDashboardScreen
+        childId={childId}
+        flavor={flavor}
+        onOpenHandoff={openHandoff}
+        onOpenJournal={openJournal}
+        onOpenEvent={openEvent}
+        onOpenProfile={openProfile}
+      />
+    </>
+  );
 }

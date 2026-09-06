@@ -13,9 +13,16 @@ export {
   useUpdateChildCaregivers,
 } from "./children";
 export { useCreateInvitation, useInvitations, useRevokeInvitation } from "./invitations";
+export { useOverview } from "./overview";
+export { useDeleteEvent, useEvents, useUpdateEvent } from "./events";
+export { useSaveManualEntry } from "./captures";
+export { useCare, useCareAction } from "./care";
+export { useAcknowledgeBrief, useBrief, useCreateBrief } from "./handoffs";
 
 export type { ApiClientProviderProps } from "./provider";
 export type { RevokeInvitationVariables } from "./invitations";
+export type { DeleteEventVariables, UpdateEventVariables } from "./events";
+export type { SaveManualEntryInput } from "./captures";
 export type {
   ApiClient,
   ApiClientErrorCode,
