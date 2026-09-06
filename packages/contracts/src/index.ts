@@ -68,16 +68,46 @@ export {
   captureAmbiguitySchema,
   captureDraftSchema,
   captureDtoSchema,
+  captureErrorCodeSchema,
   captureInputKindSchema,
   captureStatusSchema,
+  completeUploadRequestSchema,
+  completeUploadResponseSchema,
   confirmCaptureRequestSchema,
   confirmCaptureResponseSchema,
   confirmedCandidateSchema,
+  createCaptureAudioSchema,
   createCaptureInputKindSchema,
   createCaptureRequestSchema,
   draftCandidateSchema,
+  retryCaptureResponseSchema,
   updateCaptureDraftRequestSchema,
 } from "./schemas/captures";
+export {
+  expectedCandidateSchema,
+  extractionCandidateSchema,
+  extractionInputSchema,
+  extractionOutputSchema,
+  extractionProvenanceSchema,
+  spokenTimeSchema,
+} from "./schemas/extraction";
+export {
+  mediaAssetDtoSchema,
+  mediaKindSchema,
+  mediaStatusSchema,
+  uploadAuthorizationSchema,
+} from "./schemas/media";
+export {
+  AUDIO_MAX_BYTES,
+  AUDIO_MAX_DURATION_MS,
+  AUDIO_MIME_TYPES,
+  IMAGE_MAX_BYTES,
+  IMAGE_MIME_TYPES,
+  MAX_ATTACHMENTS_PER_CAPTURE,
+  VIDEO_MAX_BYTES,
+  VIDEO_MAX_DURATION_MS,
+  VIDEO_MIME_TYPES,
+} from "./schemas/media-limits";
 export {
   careActionRequestSchema,
   careListResponseSchema,
@@ -160,16 +190,30 @@ export type {
   CaptureAmbiguity,
   CaptureDraft,
   CaptureDto,
+  CaptureErrorCode,
   CaptureInputKind,
   CaptureStatus,
+  CompleteUploadRequest,
+  CompleteUploadResponse,
   ConfirmCaptureRequest,
   ConfirmCaptureResponse,
   ConfirmedCandidate,
+  CreateCaptureAudio,
   CreateCaptureInputKind,
   CreateCaptureRequest,
   DraftCandidate,
+  RetryCaptureResponse,
   UpdateCaptureDraftRequest,
 } from "./types/captures";
+export type {
+  ExpectedCandidate,
+  ExtractionCandidate,
+  ExtractionInput,
+  ExtractionOutput,
+  ExtractionProvenance,
+  SpokenTimeComponents,
+} from "./types/extraction";
+export type { MediaAssetDto, MediaKind, MediaStatus, UploadAuthorization } from "./types/media";
 export type {
   CareActionRequest,
   CareListResponse,

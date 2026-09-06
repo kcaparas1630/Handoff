@@ -9,6 +9,8 @@ import {
   timePrecisionSchema,
 } from "./events";
 import { timezoneSchema } from "./identity";
+import { mediaAssetDtoSchema, uploadAuthorizationSchema } from "./media";
+import { AUDIO_MAX_BYTES, AUDIO_MAX_DURATION_MS, AUDIO_MIME_TYPES } from "./media-limits";
 
 export const captureInputKindSchema = z.enum(["audio", "text", "manual"]);
 
@@ -63,9 +65,28 @@ export const captureDraftSchema = z.object({
   candidates: z.array(draftCandidateSchema),
 });
 
-// Audio capture arrives in milestone 3 together with upload authorization and the worker,
-// so this milestone accepts only the two input kinds the client can complete in one request.
-export const createCaptureInputKindSchema = z.enum(["manual", "text"]);
+// Closed set of terminal reasons a capture can fail with. Producers pick one of these; the DTO
+// keeps a plain string so an older stored record still reads back.
+export const captureErrorCodeSchema = z.enum([
+  "transcription_failed",
+  "extraction_failed",
+  "invalid_audio",
+  "upload_missing",
+  "provider_quota",
+  "budget_exceeded",
+  "crypto_failure",
+  "unknown",
+]);
+
+export const createCaptureInputKindSchema = z.enum(["manual", "text", "audio"]);
+
+// What the client knows before uploading. The server re-derives size and duration from the
+// stored object; these values only size the upload authorization and reject obvious overruns.
+export const createCaptureAudioSchema = z.object({
+  declaredMime: z.enum(AUDIO_MIME_TYPES),
+  declaredSizeBytes: z.int().positive().max(AUDIO_MAX_BYTES),
+  declaredDurationMs: z.int().positive().max(AUDIO_MAX_DURATION_MS),
+});
 
 export const createCaptureRequestSchema = z
   .object({
@@ -80,6 +101,7 @@ export const createCaptureRequestSchema = z
     // Manual entry skips extraction: the client sends the reviewed entry as one candidate.
     candidates: z.array(draftCandidateSchema).min(1).optional(),
     text: z.string().trim().min(1).max(4000).optional(),
+    audio: createCaptureAudioSchema.optional(),
   })
   .superRefine((value, ctx) => {
     if (value.inputKind === "manual" && value.candidates === undefined) {
@@ -94,6 +116,20 @@ export const createCaptureRequestSchema = z
         code: "custom",
         path: ["text"],
         message: "Text capture requires the typed text",
+      });
+    }
+    if (value.inputKind === "audio" && value.audio === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["audio"],
+        message: "Audio capture requires the declared recording metadata",
+      });
+    }
+    if (value.inputKind !== "audio" && value.audio !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["audio"],
+        message: "Only an audio capture allocates a recording upload",
       });
     }
   });
@@ -113,6 +149,13 @@ export const captureDtoSchema = z.object({
   draft: captureDraftSchema.nullable(),
   errorCode: z.string().nullable(),
   confirmedAt: z.iso.datetime().nullable(),
+  // The source recording, once one exists. Its bytes are reached through a separate authorized
+  // asset request, never through this DTO. Optional so a milestone 2 text/manual response that
+  // predates the audio pipeline still validates; absent means the same as null.
+  audioAsset: mediaAssetDtoSchema.nullable().optional(),
+  // Present only on the creating response and on an authorized re-request while the capture is
+  // still awaiting_upload. It is never persisted or replayed from an idempotency record.
+  upload: uploadAuthorizationSchema.nullable().optional(),
   version: versionSchema,
   createdAt: z.iso.datetime(),
 });
@@ -137,4 +180,21 @@ export const confirmCaptureRequestSchema = z.object({
 export const confirmCaptureResponseSchema = z.object({
   capture: captureDtoSchema,
   events: z.array(eventDtoSchema),
+});
+
+// POST /captures/:captureId/complete. The client reports what it actually uploaded; the server
+// verifies the stored object before it commits the upload state and enqueues the job.
+export const completeUploadRequestSchema = z.object({
+  sizeBytes: z.int().positive(),
+  checksum: z.string().trim().min(1).max(120).optional(),
+  durationMs: z.int().positive().optional(),
+});
+
+export const completeUploadResponseSchema = z.object({
+  capture: captureDtoSchema,
+  asset: mediaAssetDtoSchema,
+});
+
+export const retryCaptureResponseSchema = z.object({
+  capture: captureDtoSchema,
 });

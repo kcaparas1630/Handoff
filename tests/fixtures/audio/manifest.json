@@ -1,0 +1,182 @@
+[
+  {
+    "file": "audio/ex-001.wav",
+    "caseId": "ex-001",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft David Desktop",
+    "durationMs": 3655,
+    "expectedTranscript": "Fed him 60 ml from a bottle at 2 am."
+  },
+  {
+    "file": "audio/ex-002.wav",
+    "caseId": "ex-002",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft Zira Desktop",
+    "durationMs": 1890,
+    "expectedTranscript": "Fed at 2 am."
+  },
+  {
+    "file": "audio/ex-003.wav",
+    "caseId": "ex-003",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft David Desktop",
+    "durationMs": 2110,
+    "expectedTranscript": "Baby had poop a lot."
+  },
+  {
+    "file": "audio/ex-004.wav",
+    "caseId": "ex-004",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft Zira Desktop",
+    "durationMs": 2410,
+    "expectedTranscript": "First word, Dada."
+  },
+  {
+    "file": "audio/ex-005.wav",
+    "caseId": "ex-005",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft David Desktop",
+    "durationMs": 1890,
+    "expectedTranscript": "Did not feed yet."
+  },
+  {
+    "file": "audio/ex-006.wav",
+    "caseId": "ex-006",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft Zira Desktop",
+    "durationMs": 2220,
+    "expectedTranscript": "Give 60 ml later."
+  },
+  {
+    "file": "audio/ex-007.wav",
+    "caseId": "ex-007",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft David Desktop",
+    "durationMs": 3730,
+    "expectedTranscript": "Fed 60, no, 90 ml."
+  },
+  {
+    "file": "audio/ex-008.wav",
+    "caseId": "ex-008",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft Zira Desktop",
+    "durationMs": 1665,
+    "expectedTranscript": "Fed her at two."
+  },
+  {
+    "file": "audio/ex-009.wav",
+    "caseId": "ex-009",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft David Desktop",
+    "durationMs": 2665,
+    "expectedTranscript": "She slept from one to two thirty."
+  },
+  {
+    "file": "audio/ex-011.wav",
+    "caseId": "ex-011",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft Zira Desktop",
+    "durationMs": 1675,
+    "expectedTranscript": "Fed at twelve."
+  },
+  {
+    "file": "audio/ex-013.wav",
+    "caseId": "ex-013",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft David Desktop",
+    "durationMs": 2320,
+    "expectedTranscript": "Ava had a bottle at ten."
+  },
+  {
+    "file": "audio/ex-015.wav",
+    "caseId": "ex-015",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft Zira Desktop",
+    "durationMs": 3525,
+    "expectedTranscript": "Uh, hold on, okay never mind."
+  },
+  {
+    "file": "audio/ex-016.wav",
+    "caseId": "ex-016",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft David Desktop",
+    "durationMs": 4145,
+    "expectedTranscript": "Fed 90 ml at two am, and first word Dada."
+  },
+  {
+    "file": "audio/ex-017.wav",
+    "caseId": "ex-017",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft Zira Desktop",
+    "durationMs": 2760,
+    "expectedTranscript": "She drank two ounces from the bottle."
+  },
+  {
+    "file": "audio/ex-019.wav",
+    "caseId": "ex-019",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft David Desktop",
+    "durationMs": 4550,
+    "expectedTranscript": "Fed one hundred and twenty millilitres at seven thirty this morning."
+  },
+  {
+    "file": "audio/ex-020.wav",
+    "caseId": "ex-020",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft Zira Desktop",
+    "durationMs": 2695,
+    "expectedTranscript": "Should I give more formula tonight?"
+  },
+  {
+    "file": "audio/ex-023.wav",
+    "caseId": "ex-023",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft David Desktop",
+    "durationMs": 3240,
+    "expectedTranscript": "Fed 60 ml at one thirty this morning."
+  },
+  {
+    "file": "audio/ex-030.wav",
+    "caseId": "ex-030",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft Zira Desktop",
+    "durationMs": 4040,
+    "expectedTranscript": "Nap from one fifteen to two forty five this afternoon."
+  },
+  {
+    "file": "audio/ex-038.wav",
+    "caseId": "ex-038",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft David Desktop",
+    "durationMs": 7995,
+    "expectedTranscript": "Fed 100 ml at nine am, changed a wet diaper at nine thirty am, and she went down for a nap at ten am."
+  },
+  {
+    "file": "audio/ex-050.wav",
+    "caseId": "ex-050",
+    "source": "synthetic-tts",
+    "consent": "not-applicable-synthetic",
+    "voice": "Microsoft Zira Desktop",
+    "durationMs": 1750,
+    "expectedTranscript": "Down for a nap."
+  }
+]
