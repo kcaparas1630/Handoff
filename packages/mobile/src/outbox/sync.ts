@@ -8,6 +8,7 @@ import type { ApiClient } from "@handoff/api-client";
 import type { CaptureDto, UploadAuthorization } from "@handoff/contracts";
 import type { SQLiteDatabase } from "expo-sqlite";
 
+import { syncAttachments } from "./attachment-sync";
 import { advanceStage, deleteOutboxCapture, listPendingForUser, markFailed } from "./database";
 import { isAttemptDue, planRetry } from "./lib/retry-schedule";
 import { uploadToSignedUrl } from "./upload";
@@ -36,9 +37,10 @@ class UploadStepError extends Error {
 let inFlight: Promise<SyncOutboxResult> | null = null;
 
 /**
- * Walks every pending recording through `saved_locally → capture_created → uploaded → completed`.
- * Each transition is committed before the next request runs, so the app can be killed at any point
- * and resume without repeating an effect (implementation-roadmap.md milestone 3).
+ * Walks every pending recording through `saved_locally → capture_created → uploaded → completed`,
+ * then does the same for queued attachments. Each transition is committed before the next request
+ * runs, so the app can be killed at any point and resume without repeating an effect
+ * (implementation-roadmap.md milestones 3 and 4).
  */
 export function syncOutbox(input: SyncOutboxInput): Promise<SyncOutboxResult> {
   // Mount, foreground, and the interval can all fire at once; overlapping passes would retry the
@@ -83,6 +85,13 @@ async function runSync({
       result.failed += 1;
     }
   }
+
+  // Attachments run after recordings: an attachment needs the capture its recording allocated.
+  const attachments = await syncAttachments({ db, client, clerkUserId, now });
+  result.advanced += attachments.advanced;
+  result.deferred += attachments.deferred;
+  result.failed += attachments.failed;
+
   return result;
 }
 

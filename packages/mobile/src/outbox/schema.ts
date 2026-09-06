@@ -38,4 +38,34 @@ CREATE INDEX IF NOT EXISTS outbox_captures_user_stage_idx
 
 CREATE INDEX IF NOT EXISTS outbox_captures_child_idx
   ON outbox_captures (clerk_user_id, child_id);
+
+-- Attachments added to a capture (architecture.md section 6). Same rule as the recording table:
+-- identifiers, attempt state, and a file reference, with no care content of any kind.
+CREATE TABLE IF NOT EXISTS outbox_attachments (
+  local_id TEXT PRIMARY KEY,
+  clerk_user_id TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  child_id TEXT NOT NULL,
+  capture_id TEXT NOT NULL,
+  asset_id TEXT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('image', 'video')),
+  file_uri TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  duration_ms INTEGER NULL,
+  stage TEXT NOT NULL CHECK (
+    stage IN ('saved_locally', 'asset_created', 'uploaded', 'completed', 'failed')
+  ),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error_code TEXT NULL,
+  next_attempt_at TEXT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS outbox_attachments_user_stage_idx
+  ON outbox_attachments (clerk_user_id, stage);
+
+CREATE INDEX IF NOT EXISTS outbox_attachments_capture_idx
+  ON outbox_attachments (clerk_user_id, capture_id);
 `;

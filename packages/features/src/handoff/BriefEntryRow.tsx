@@ -3,11 +3,13 @@ import { Button, EventCard } from "@handoff/ui";
 import type { EventCardTag } from "@handoff/ui";
 import { Text, View } from "react-native";
 
+import { AttachmentViewer } from "../journal/AttachmentViewer";
 import type { BriefEntryRowProps } from "./types/handoff-screen";
 
 /** Every rendered fact keeps a path to the revision it came from (architecture.md section 5). */
 export function BriefEntryRow({
   entry,
+  assetIds,
   timezone,
   isExpanded,
   onToggle,
@@ -32,6 +34,8 @@ export function BriefEntryRow({
         tag={tagOf(entry.label)}
         onPress={onToggle}
       />
+      <AttachmentViewer assetIds={assetIds} label="Shared with this update" />
+
       {isExpanded ? (
         <View className="gap-xs rounded-md border border-border px-lg py-md dark:border-border-dark">
           <Text className="text-sm text-muted dark:text-muted-dark">

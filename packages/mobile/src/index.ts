@@ -12,6 +12,21 @@ export { normaliseMeteringLevel } from "./audio/lib/metering-level";
 export { isSupportedAudioMime, recordingMimeForUri } from "./audio/lib/recording-mime";
 
 export {
+  AttachmentPermissionError,
+  UnsupportedAttachmentError,
+  pickAttachment,
+} from "./media/picker";
+export { prepareImageForUpload } from "./media/prepare-image";
+export { deleteAttachmentFile, saveAttachmentFile } from "./media/attachment-storage";
+export { describeAttachmentLimitProblem } from "./media/lib/attachment-file-limits";
+export {
+  attachmentExtensionForMime,
+  attachmentExtensionForUri,
+  attachmentMimeFor,
+} from "./media/lib/attachment-mime";
+export { MAX_IMAGE_EDGE, resizeTargetForImage } from "./media/lib/resize-target";
+
+export {
   advanceStage,
   deleteAllForUser,
   deleteOutboxCapture,
@@ -23,11 +38,26 @@ export {
   openOutbox,
   retryOutboxCapture,
 } from "./outbox/database";
+export {
+  advanceAttachmentStage,
+  deleteAllAttachmentsForUser,
+  deleteOutboxAttachment,
+  findOutboxAttachment,
+  insertOutboxAttachment,
+  listAttachmentsForUser,
+  listPendingAttachmentsForUser,
+  markAttachmentFailed,
+  restartOutboxAttachment,
+} from "./outbox/attachment-database";
 export { syncOutbox } from "./outbox/sync";
+export { ATTACHMENT_AUTHORIZATION_EXPIRED, syncAttachments } from "./outbox/attachment-sync";
+export { describeAttachmentProgress, summariseAttachments } from "./outbox/lib/attachment-summary";
 export { uploadToSignedUrl } from "./outbox/upload";
 export { useOutboxSync } from "./outbox/useOutboxSync";
 export { useOutboxCapture, useOutboxCaptures } from "./outbox/useOutboxCaptures";
 export { useEnqueueRecording } from "./outbox/useEnqueueRecording";
+export { useEnqueueAttachment } from "./outbox/useEnqueueAttachment";
+export { useOutboxAttachments } from "./outbox/useOutboxAttachments";
 export {
   MAX_AUTOMATIC_ATTEMPTS,
   isAttemptDue,
@@ -56,5 +86,24 @@ export type {
   OutboxStagePatch,
 } from "./outbox/types/outbox";
 export type { SyncOutboxInput, SyncOutboxResult } from "./outbox/sync";
+export type { SyncAttachmentsInput, SyncAttachmentsResult } from "./outbox/attachment-sync";
+export type {
+  AttachmentStage,
+  AttachmentStagePatch,
+  InsertOutboxAttachment,
+  OutboxAttachment,
+  OutboxAttachmentSummary,
+} from "./outbox/types/attachment";
+export type {
+  ExplainAttachmentPermission,
+  PickAttachmentKind,
+  PickAttachmentOptions,
+  PickAttachmentSource,
+  PickedAttachment,
+  PreparedImage,
+  StoredAttachmentFile,
+} from "./media/types/attachment";
 export type { EnqueueRecordingInput } from "./outbox/useEnqueueRecording";
+export type { EnqueueAttachmentInput } from "./outbox/useEnqueueAttachment";
+export type { UseOutboxAttachments } from "./outbox/useOutboxAttachments";
 export type { SignedUploadRequest, SignedUploadResult } from "./outbox/upload";

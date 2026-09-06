@@ -10,8 +10,10 @@ import { Button, Screen, StatusMessage } from "@handoff/ui";
 import { useEffect, useState } from "react";
 import { Alert, Text, View } from "react-native";
 
+import { AttachmentPicker } from "../recording/AttachmentPicker";
 import { ChoiceChips } from "../shared/ChoiceChips";
 import { describeError } from "../shared/lib/describe-error";
+import { AttachmentViewer } from "./AttachmentViewer";
 import { EntryFieldGroup } from "./entry/EntryFieldGroup";
 import { OccurrenceTimeControl } from "./entry/OccurrenceTimeControl";
 import { buildEntryFields } from "./lib/entry-fields";
@@ -144,6 +146,19 @@ export function EventEditor({ eventId, childId, onDone }: EventEditorProps) {
       {isRemoved ? (
         <StatusMessage tone="warning" message="This entry was removed and is no longer recorded." />
       ) : null}
+
+      <AttachmentViewer assetIds={event.readyAssetIds} label="Photos and videos on this entry" />
+
+      {/* An attachment added now rides on the same capture and appears in the next handoff. */}
+      {isRemoved ? null : (
+        <AttachmentPicker
+          captureId={event.captureId}
+          childId={event.childId}
+          workspaceId={event.workspaceId}
+          serverAttachmentCount={event.readyAssetIds.length}
+          testID="event-editor-attachments"
+        />
+      )}
 
       {hasConflict ? (
         <>

@@ -19,9 +19,11 @@ import { Text, View } from "react-native";
 import { CareStatus } from "../care/CareStatus";
 import { describeError } from "../shared/lib/describe-error";
 import { useReducedMotion } from "../shared/useReducedMotion";
+import { AttachmentViewer } from "./AttachmentViewer";
 import { DashboardHeader } from "./DashboardHeader";
 import { QuickEntrySheet } from "./QuickEntrySheet";
 import { describeCaring } from "./lib/caring-line";
+import { dedupeAttachmentsByCapture } from "./lib/dedupe-attachments-by-capture";
 import { presentEvent } from "./lib/event-presentation";
 import type { CareDashboardScreenProps } from "./types/care-dashboard-screen";
 
@@ -71,6 +73,10 @@ export function CareDashboardScreen({
   // UI visibility is not authorization; the server rechecks every write.
   const canContribute = data.child.permission !== "reader" && timezone !== null;
   const hasHistory = data.recentActivity.length > 0 || hasAnyLatest(data);
+  // One capture's photo belongs to all of its events; the preview shows it on the first of them.
+  const attachmentsByEvent = dedupeAttachmentsByCapture(
+    data.recentActivity.map((event) => ({ key: event.id, readyAssetIds: event.readyAssetIds })),
+  );
 
   return (
     <Screen scroll testID="care-dashboard">
@@ -139,14 +145,16 @@ export function CareDashboardScreen({
             Recent updates and moments
           </Text>
           {data.recentActivity.map((event) => (
-            <EventCard
-              key={event.id}
-              kind={event.kind}
-              {...presentEvent(event, now, ownUserId)}
-              isImportant={event.important}
-              onPress={() => onOpenEvent(event.id)}
-              testID={`dashboard-event-${event.id}`}
-            />
+            <View key={event.id} className="gap-sm">
+              <EventCard
+                kind={event.kind}
+                {...presentEvent(event, now, ownUserId)}
+                isImportant={event.important}
+                onPress={() => onOpenEvent(event.id)}
+                testID={`dashboard-event-${event.id}`}
+              />
+              <AttachmentViewer assetIds={attachmentsByEvent[event.id] ?? []} />
+            </View>
           ))}
           <Button
             label="View all activity"

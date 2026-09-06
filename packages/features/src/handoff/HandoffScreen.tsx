@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 
+import { dedupeAttachmentsByCapture } from "../journal/lib/dedupe-attachments-by-capture";
 import { describeError } from "../shared/lib/describe-error";
 import { BriefEntryRow } from "./BriefEntryRow";
 import type { HandoffScreenProps } from "./types/handoff-screen";
@@ -64,11 +65,17 @@ export function HandoffScreen({ childId, onDone, onOpenEvent }: HandoffScreenPro
     );
   }
 
+  // A capture's attachment is shown once inside a section; the other entries still link back to
+  // their own source revision (experience-design.md section 5).
   function renderEntries(entries: readonly BriefEntry[]): ReactNode {
+    const attachmentsByEntry = dedupeAttachmentsByCapture(
+      entries.map((entry) => ({ key: entryKey(entry), readyAssetIds: entry.readyAssetIds })),
+    );
     return entries.map((entry) => (
       <BriefEntryRow
-        key={`${entry.eventId}-${entry.revisionId}`}
+        key={entryKey(entry)}
         entry={entry}
+        assetIds={attachmentsByEntry[entryKey(entry)] ?? []}
         timezone={timezone}
         isExpanded={expandedIds.includes(entry.eventId)}
         onToggle={() => toggle(entry.eventId)}
@@ -171,6 +178,10 @@ export function HandoffScreen({ childId, onDone, onOpenEvent }: HandoffScreenPro
       <Button label="Close without marking read" variant="quiet" onPress={onDone} />
     </Screen>
   );
+}
+
+function entryKey(entry: BriefEntry): string {
+  return `${entry.eventId}-${entry.revisionId}`;
 }
 
 function Section({

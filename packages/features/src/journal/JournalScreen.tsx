@@ -6,6 +6,8 @@ import { View } from "react-native";
 import { ChoiceChips } from "../shared/ChoiceChips";
 import type { ChoiceOption } from "../shared/types/choice-chips";
 import { describeError } from "../shared/lib/describe-error";
+import { AttachmentViewer } from "./AttachmentViewer";
+import { dedupeAttachmentsByCapture } from "./lib/dedupe-attachments-by-capture";
 import { presentEvent } from "./lib/event-presentation";
 import type { JournalFilter, JournalScreenProps } from "./types/journal-screen";
 
@@ -26,6 +28,10 @@ export function JournalScreen({ childId, onOpenEvent, onBack }: JournalScreenPro
   const ownUserId = bootstrap.data?.user.id ?? null;
   const now = events.dataUpdatedAt === 0 ? new Date() : new Date(events.dataUpdatedAt);
   const items = events.data?.pages.flatMap((page) => page.items) ?? [];
+  // Every event from one capture carries that capture's attachments; the list shows them once.
+  const attachmentsByEvent = dedupeAttachmentsByCapture(
+    items.map((event) => ({ key: event.id, readyAssetIds: event.readyAssetIds })),
+  );
 
   return (
     <Screen scroll testID="journal-screen">
@@ -59,14 +65,16 @@ export function JournalScreen({ childId, onOpenEvent, onBack }: JournalScreenPro
 
       <View className="gap-md">
         {items.map((event) => (
-          <EventCard
-            key={event.id}
-            kind={event.kind}
-            {...presentEvent(event, now, ownUserId)}
-            isImportant={event.important}
-            onPress={() => onOpenEvent(event.id)}
-            testID={`journal-event-${event.id}`}
-          />
+          <View key={event.id} className="gap-sm">
+            <EventCard
+              kind={event.kind}
+              {...presentEvent(event, now, ownUserId)}
+              isImportant={event.important}
+              onPress={() => onOpenEvent(event.id)}
+              testID={`journal-event-${event.id}`}
+            />
+            <AttachmentViewer assetIds={attachmentsByEvent[event.id] ?? []} />
+          </View>
         ))}
       </View>
 

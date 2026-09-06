@@ -33,6 +33,13 @@ export {
   updateCaptureDraft,
 } from "./capture-requests";
 export {
+  completeAssetUpload,
+  createAssetUpload,
+  getAssetRead,
+  useAssetRead,
+  useCreateAssetUpload,
+} from "./media";
+export {
   CAPTURE_POLL_BACKOFF_AFTER_MS,
   CAPTURE_POLL_FAST_MS,
   CAPTURE_POLL_SLOW_MS,
@@ -53,6 +60,7 @@ export type {
   UseCaptureOptions,
 } from "./captures";
 export type { CreateAudioCaptureInput } from "./capture-requests";
+export type { CreateAssetUploadVariables, UseAssetReadOptions } from "./media";
 export type {
   ApiClient,
   ApiClientErrorCode,

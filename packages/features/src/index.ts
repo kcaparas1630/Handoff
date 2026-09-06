@@ -9,10 +9,19 @@ export { ChildProfileScreen } from "./children/ChildProfileScreen";
 export { InvitationsScreen } from "./invitations/InvitationsScreen";
 export { CareDashboardScreen } from "./journal/CareDashboardScreen";
 export { JournalScreen } from "./journal/JournalScreen";
+export { AttachmentViewer } from "./journal/AttachmentViewer";
+export { dedupeAttachmentsByCapture } from "./journal/lib/dedupe-attachments-by-capture";
 export { EventEditor } from "./journal/EventEditor";
 export { QuickEntrySheet } from "./journal/QuickEntrySheet";
 export { RecordScreen } from "./recording/RecordScreen";
 export { ReviewCaptureScreen } from "./recording/ReviewCaptureScreen";
+export { AttachmentPicker } from "./recording/AttachmentPicker";
+export { useAddAttachment } from "./recording/useAddAttachment";
+export { attachmentTileStatus, describeStageFailure } from "./recording/lib/attachment-state";
+export {
+  describeAttachmentLimit,
+  remainingAttachmentSlots,
+} from "./recording/lib/attachment-limits";
 export { HandoffScreen } from "./handoff/HandoffScreen";
 export { CareStatus } from "./care/CareStatus";
 
@@ -30,6 +39,11 @@ export type {
 } from "./invitations/types/invitations-screen";
 export type { CareDashboardScreenProps } from "./journal/types/care-dashboard-screen";
 export type { JournalFilter, JournalScreenProps } from "./journal/types/journal-screen";
+export type {
+  AttachmentModalProps,
+  AttachmentThumbnailProps,
+  AttachmentViewerProps,
+} from "./journal/types/attachment-viewer";
 export type { EventEditorProps } from "./journal/types/event-editor";
 export type { QuickEntrySheetProps } from "./journal/types/quick-entry-sheet";
 export type { EntryForm, OccurrenceTime } from "./journal/types/entry-form";
@@ -39,5 +53,11 @@ export type {
   ReviewTarget,
   TypeInsteadSheetProps,
 } from "./recording/types/recording";
-export type { HandoffScreenProps } from "./handoff/types/handoff-screen";
+export type {
+  AddAttachmentFailure,
+  AttachmentPickerProps,
+  UseAddAttachment,
+} from "./recording/types/attachment-picker";
+export type { AddAttachmentContext } from "./recording/useAddAttachment";
+export type { BriefEntryRowProps, HandoffScreenProps } from "./handoff/types/handoff-screen";
 export type { CareStatusProps } from "./care/types/care-status";

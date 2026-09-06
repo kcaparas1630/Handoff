@@ -4,7 +4,7 @@ import {
   useRetryCapture,
   useUpdateCaptureDraft,
 } from "@handoff/api-client";
-import type { DraftCandidate } from "@handoff/contracts";
+import type { DraftCandidate, EventDto } from "@handoff/contracts";
 import {
   openOutbox,
   retryOutboxCapture,
@@ -16,9 +16,12 @@ import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
 import { describeError } from "../shared/lib/describe-error";
+import { AttachmentPicker } from "./AttachmentPicker";
+import { CaptureFailureActions } from "./CaptureFailureActions";
 import { CaptureProgressSteps } from "./CaptureProgressSteps";
 import { DraftCandidateRow } from "./DraftCandidateRow";
 import { EditCandidateSheet } from "./EditCandidateSheet";
+import { SavedCaptureTransition } from "./SavedCaptureTransition";
 import { TranscriptSection } from "./TranscriptSection";
 import { canRetryCaptureError, describeCaptureError } from "./lib/describe-capture-error";
 import { describeCaptureStatus } from "./lib/describe-capture-status";
@@ -51,6 +54,7 @@ export function ReviewCaptureScreen({
   const requestOutboxSync = useRecordingStore((state) => state.requestOutboxSync);
 
   const [candidates, setCandidates] = useState<DraftCandidate[] | null>(null);
+  const [savedEvents, setSavedEvents] = useState<readonly EventDto[] | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const seededVersion = useRef<number | null>(null);
 
@@ -72,6 +76,7 @@ export function ReviewCaptureScreen({
   const timezone = capture.data?.timezone ?? outbox.row?.timezone ?? null;
   const capturedAt = capture.data?.capturedAt ?? outbox.row?.capturedAt ?? null;
   const childId = capture.data?.childId ?? outbox.row?.childId ?? null;
+  const workspaceId = capture.data?.workspaceId ?? outbox.row?.workspaceId ?? null;
 
   // Nothing to show: no server capture, and the local row is gone.
   if (captureId === null && outbox.row === null && !outbox.isLoading) {
@@ -108,7 +113,9 @@ export function ReviewCaptureScreen({
         onSuccess: (response) => {
           // The server owns this capture now, so the local row and its file can be released.
           requestOutboxSync();
-          onSaved(response.events);
+          // experience-design.md section 3: a quiet transition that offers Add photo or video
+          // before the entries are left behind in the journal.
+          setSavedEvents(response.events);
         },
       },
     );
@@ -122,6 +129,18 @@ export function ReviewCaptureScreen({
       .then(requestOutboxSync);
   }
 
+  if (savedEvents !== null) {
+    return (
+      <SavedCaptureTransition
+        events={savedEvents}
+        captureId={captureId}
+        childId={childId}
+        workspaceId={workspaceId}
+        onDone={() => onSaved(savedEvents)}
+      />
+    );
+  }
+
   return (
     <Screen scroll testID="review-capture">
       <CaptureProgressSteps progress={progress} />
@@ -131,7 +150,7 @@ export function ReviewCaptureScreen({
       ) : null}
 
       {progress.hasFailed ? (
-        <FailureActions
+        <CaptureFailureActions
           message={
             capture.data?.status === "failed"
               ? describeCaptureError(capture.data.errorCode)
@@ -203,6 +222,16 @@ export function ReviewCaptureScreen({
             <StatusMessage tone="error" message={describeError(confirm.error)} />
           ) : null}
 
+          {captureId === null || childId === null || workspaceId === null ? null : (
+            <AttachmentPicker
+              captureId={captureId}
+              childId={childId}
+              workspaceId={workspaceId}
+              serverAttachmentCount={0}
+              testID="review-attachments"
+            />
+          )}
+
           <Button
             label={`Save ${keptCount} update${keptCount === 1 ? "" : "s"}`}
             onPress={handleSave}
@@ -240,29 +269,5 @@ export function ReviewCaptureScreen({
         />
       )}
     </Screen>
-  );
-}
-
-function FailureActions({
-  message,
-  canRetry,
-  isRetrying,
-  onRetry,
-  onEnterManually,
-}: {
-  message: string;
-  canRetry: boolean;
-  isRetrying: boolean;
-  onRetry: () => void;
-  onEnterManually: () => void;
-}) {
-  return (
-    <View className="gap-md">
-      <StatusMessage tone="error" message={message} />
-      {canRetry ? (
-        <Button label="Try again" onPress={onRetry} isLoading={isRetrying} testID="review-retry" />
-      ) : null}
-      <Button label="Enter manually" variant="secondary" onPress={onEnterManually} />
-    </View>
   );
 }

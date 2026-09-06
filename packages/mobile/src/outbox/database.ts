@@ -2,6 +2,7 @@ import { openDatabaseAsync } from "expo-sqlite";
 import type { SQLiteDatabase } from "expo-sqlite";
 
 import { deleteRecordingFile } from "../audio/recording-storage";
+import { deleteAllAttachmentsForUser } from "./attachment-database";
 import { outboxSchemaSql } from "./schema";
 import type {
   InsertOutboxCapture,
@@ -214,16 +215,18 @@ export async function deleteOutboxCapture(
 
 /**
  * Sign-out cleanup. architecture.md section 7: logout removes that user's local files and outbox
- * after a clear unsent-recordings notice.
+ * after a clear unsent notice. Recordings and attachments go together so no file of this account
+ * survives for the next person to sign in.
  */
 export async function deleteAllForUser(
   database: SQLiteDatabase,
   clerkUserId: string,
-): Promise<number> {
+): Promise<{ recordings: number; attachments: number }> {
   const rows = await listAllForUser(database, clerkUserId);
   for (const row of rows) deleteRecordingFile(row.fileUri);
   await database.runAsync("DELETE FROM outbox_captures WHERE clerk_user_id = ?", [clerkUserId]);
-  return rows.length;
+  const attachments = await deleteAllAttachmentsForUser(database, clerkUserId);
+  return { recordings: rows.length, attachments };
 }
 
 function toOutboxCapture(row: OutboxRow): OutboxCapture {

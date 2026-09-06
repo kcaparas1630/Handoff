@@ -30,4 +30,7 @@ export const queryKeys = {
     ["care", scope(userId), scope(childId)] as const,
   brief: (userId: string | null, briefId: string | null) =>
     ["brief", scope(userId), scope(briefId)] as const,
+  // Signed read URLs expire in about a minute, so this entry is short-lived and never persisted.
+  asset: (userId: string | null, assetId: string | null) =>
+    ["asset", scope(userId), scope(assetId)] as const,
 };

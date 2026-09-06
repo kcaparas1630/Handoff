@@ -1,4 +1,6 @@
 // NativeWind primitives and presentational cards. No navigation, data fetching, or authorization.
+export { AttachmentStrip } from "./AttachmentStrip";
+export { AttachmentTile } from "./AttachmentTile";
 export { Button } from "./Button";
 export { CareSnapshot } from "./CareSnapshot";
 export { ChildCard } from "./ChildCard";
@@ -21,6 +23,12 @@ export {
   themes,
 } from "./theme/tokens";
 
+export type {
+  AttachmentStripProps,
+  AttachmentTileKind,
+  AttachmentTileProps,
+  AttachmentTileStatus,
+} from "./types/attachment-tile";
 export type { ButtonProps, ButtonVariant } from "./types/button";
 export type { CareSnapshotKind, CareSnapshotProps, CareSnapshotTile } from "./types/care-snapshot";
 export type { ChildCardBadge, ChildCardProps } from "./types/child-card";

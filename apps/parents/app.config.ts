@@ -29,6 +29,13 @@ const config: ExpoConfig = {
         enableBackgroundPlayback: false,
       },
     ],
+    [
+      "expo-image-picker",
+      {
+        photosPermission: "Handoff attaches photos you choose to a care update.",
+        cameraPermission: "Handoff uses the camera only when you tap Take photo.",
+      },
+    ],
   ],
 };
 
