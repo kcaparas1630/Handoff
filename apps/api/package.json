@@ -1,0 +1,27 @@
+{
+  "name": "@handoff/api",
+  "version": "0.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "expo start",
+    "start": "tsx server.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "export": "expo export -p web"
+  },
+  "dependencies": {
+    "expo": "~57.0.20",
+    "expo-router": "~57.0.19",
+    "expo-server": "~57.0.3",
+    "express": "^5.1.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-web": "~0.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/react": "~19.2.2",
+    "tsx": "^4.20.0"
+  }
+}
