@@ -236,7 +236,7 @@ For all state-changing app requests, require a client-generated UUID `Idempotenc
 | `GET/POST /workspaces/:workspaceId/children` | List authorized children; owner/manager creates child and initial grants |
 | `GET/PATCH/DELETE /children/:childId` | Read/update permitted profile fields; delete marks inaccessible and enqueues purge |
 | `GET/PATCH /children/:childId/caregivers` | Scoped roster/grant management; enforce app-role ceilings |
-| `POST /workspaces/:workspaceId/invitations` | Persist intent/grants, ask Clerk to send, return accepted intent status |
+| `GET/POST /workspaces/:workspaceId/invitations` | Owner/manager lists invitation status without addresses; POST persists intent/grants, asks Clerk to send, and returns the intent status |
 | `GET/DELETE /invitations/:invitationId` | Authorized invitation status/revocation, with Clerk reconciliation |
 | `DELETE /workspaces/:workspaceId/members/:userId` | Revoke locally, close sessions, audit, schedule Clerk removal |
 | `POST /captures` | Allocate capture and optional audio asset/upload authorization; body includes selected child and stable client capture ID |
