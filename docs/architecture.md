@@ -6,6 +6,8 @@ Prepared September 5, 2026. Status: proposed implementation contract.
 
 Build a **caregiver handoff product with a lightweight journal**. Its main question is: **“What do I need to know before I take over?”**
 
+The mobile experience is a visual care dashboard with a prominent voice action, fast touch entry, and a source-linked handoff. Visual hierarchy, interaction states, and usability gates are specified in [experience design](experience-design.md); a generic todo list does not satisfy the product brief.
+
 Use a TypeScript modular monolith: two thin Expo clients, one Expo Router API deployment, one background worker, and one Supabase Postgres database. Shared UI and features live in packages; neither app imports the other app.
 
 Start with a small daycare pilot: one location, a few children, named staff accounts, and invited guardians. The Parents app also supports household workspaces, using the same child journal and handoff features. Maintain both app shells, but validate one customer workflow first. This is a prototype that can fit a focused weekend; production daycare rollout requires more operational work than that.
@@ -25,6 +27,7 @@ Start with a small daycare pilot: one location, a few children, named staff acco
 | Event truth | AI creates drafts; user confirms facts | Numbers and dates need a correction path |
 | Brief truth | Deterministic rendering of confirmed event revisions | Every displayed fact has a traceable source; generation outages cannot block taking care |
 | Storage | Supabase private object storage first | Already in the stack; swap via a small storage interface if cost requires it |
+| Database PII | Application-level AES-256-GCM envelope encryption; external key wrapping; authorized server decryption | Covered personal content is not readable from a database-only dump |
 | Synchronization | API queries plus foreground polling; local upload outbox | Avoids introducing two authorization paths or unreliable mobile background processing |
 | Jobs | Postgres job table and a separate Node worker | Durable retries without Redis or an additional queue service |
 
@@ -65,6 +68,7 @@ flowchart TB
     WK[Node worker: leased Postgres jobs]
     ASR[Speech-to-text provider]
     AI[Anthropic: transcript formatting + event drafts]
+    KEYS[External key service: wraps workspace and user data keys]
 
     P --> SH
     D --> SH
@@ -73,10 +77,12 @@ flowchart TB
     SH -->|HTTPS + Clerk bearer token| API
     CK -->|Verified webhooks| API
     API --> DOM
-    DOM --> DB
+    DOM -->|Encrypt private writes; decrypt authorized reads| DB
+    DOM --> KEYS
     DOM -->|Issue upload or read authorization| ST
     SH -->|Upload binary using scoped signed token| ST
     DB <--> WK
+    WK -->|Scoped key access| KEYS
     WK -->|Read stored audio| ST
     WK -->|Audio bytes| ASR
     ASR -->|Transcript| WK
@@ -306,8 +312,10 @@ Handoff/
   packages/
     ui/src/                  # NativeWind primitives and presentational cards
     features/src/            # Shared onboarding, journal, recording, handoff screens/hooks
-    contracts/src/           # Zod request/response and event schemas; no database imports
-    domain/src/              # Pure permissions, time resolution, event rules, brief renderer
+    contracts/src/schemas/   # Runtime Zod request/response and event schemas
+    contracts/src/types/     # Inferred transport types; no database imports
+    domain/src/lib/          # Pure permissions, time resolution, event rules, brief renderer
+    domain/src/types/        # Domain type declarations when needed
     api-client/src/          # Authenticated transport and typed query/mutation hooks
     mobile/src/              # Clerk/Query providers, recording adapter, local outbox
     db/src/                  # Drizzle schema, transactions, repositories; server only
@@ -342,6 +350,7 @@ Public packages must not import `db` or `server`, including through barrel expor
 
 ## 9. Reliability, security, and operating boundaries
 
+- Implement [PII encryption](pii-encryption.md) from milestone 1. Sensitive database fields and copied drafts/revisions/briefs use ciphertext; the server authorizes before decryption and returns permitted DTOs over HTTPS. Query metadata remains protected by access controls. This is server-side encryption, not end-to-end encryption.
 - Verify Clerk token signature, issuer, expiry, and applicable authorized-party/audience rules on the server; derive the user from the verified subject. A requested workspace ID is a selection, not proof of membership.
 - Put application tables in a non-exposed schema; disable the public Data API path for those tables. Runtime credentials are separate from migration credentials. All mobile data access goes through Handoff's API; direct object uploads/downloads use scoped authorization.
 - Tenant RLS for the restricted API database role uses transaction-local verified workspace context; domain authorization additionally checks child grants. The API role cannot own tables or bypass RLS. Background services use explicit scoped transactions after trusted job dispatch. Drizzle does not automatically propagate a Clerk token into SQL authorization.

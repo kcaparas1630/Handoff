@@ -16,6 +16,8 @@ The weekend's priority is a working two-person loop. Milestones 1–3 establish 
 
 ## Shared execution conventions
 
+- Follow root `AGENTS.md` for naming, comments, `types/` and `lib/` placement, and agent security. Follow `docs/experience-design.md` for the mobile experience; a functional generic checklist does not pass the visual/interaction brief.
+- Follow `docs/pii-encryption.md` from the first persistence milestone. Encryption is not postponed to pilot hardening; migrations create ciphertext columns directly. Plaintext DTOs remain server-memory/API types, not database columns.
 - Root package manager: pnpm workspaces. Use one lockfile and one version of React/React Native. Build apps in separate commands; neither may depend on another app.
 - Client packages: `@handoff/ui`, `@handoff/features`, `@handoff/mobile`, `@handoff/api-client`, `@handoff/contracts`, and pure `@handoff/domain` where needed.
 - Server packages: `@handoff/db` and `@handoff/server`. No transitive client import of either package.
@@ -107,11 +109,15 @@ These NativeWind configuration paths assume the stable setup selected in the ini
 Shared foundation and identity:
 
 ```text
-packages/contracts/src/common.ts
-packages/contracts/src/identity.ts
-packages/contracts/src/children.ts
-packages/contracts/src/invitations.ts
-packages/domain/src/permissions.ts
+packages/contracts/src/schemas/api-envelope.ts
+packages/contracts/src/schemas/identity.ts
+packages/contracts/src/schemas/children.ts
+packages/contracts/src/schemas/invitations.ts
+packages/contracts/src/types/api-envelope.ts
+packages/contracts/src/types/identity.ts
+packages/contracts/src/types/children.ts
+packages/contracts/src/types/invitations.ts
+packages/domain/src/lib/permissions.ts
 packages/db/drizzle.config.ts
 packages/db/src/client.ts
 packages/db/src/tenant-transaction.ts
@@ -119,6 +125,8 @@ packages/db/src/schema/identity.ts
 packages/db/src/schema/children.ts
 packages/db/src/schema/invitations.ts
 packages/db/src/schema/infrastructure.ts
+packages/db/src/schema/data-keys.ts
+packages/db/src/repositories/data-keys.ts
 packages/db/src/repositories/identity.ts
 packages/db/src/repositories/children.ts
 packages/db/src/repositories/invitations.ts
@@ -130,6 +138,14 @@ packages/server/src/http/errors.ts
 packages/server/src/http/idempotency.ts
 packages/server/src/auth/clerk.ts
 packages/server/src/auth/authorize.ts
+packages/server/src/types/encryption.ts
+packages/server/src/security/encryption/aes-gcm.ts
+packages/server/src/security/encryption/data-keys.ts
+packages/server/src/security/encryption/kms-key-wrapper.ts
+packages/server/src/security/encryption/development-key-wrapper.ts
+packages/server/src/security/encryption/lib/encryption-context.ts
+packages/server/src/security/encryption/lib/invitation-lookup.ts
+packages/server/src/security/encryption/aes-gcm.test.ts
 packages/server/src/services/bootstrap.ts
 packages/server/src/services/workspaces.ts
 packages/server/src/services/children.ts
@@ -147,6 +163,8 @@ packages/ui/src/Button.tsx
 packages/ui/src/Screen.tsx
 packages/ui/src/ChildCard.tsx
 packages/ui/src/StatusMessage.tsx
+packages/ui/src/theme/tokens.ts
+packages/ui/src/types/theme.ts
 packages/features/src/auth/SignInScreen.tsx
 packages/features/src/onboarding/OnboardingScreen.tsx
 packages/features/src/children/ChildListScreen.tsx
@@ -170,12 +188,16 @@ apps/api/src/app/v1/webhooks/clerk+api.ts
 tests/integration/identity-access.test.ts
 tests/integration/invitations.test.ts
 tests/integration/tenant-context.test.ts
+tests/integration/pii-storage.test.ts
+tests/integration/encrypted-invitations.test.ts
 tests/e2e/onboarding-invitation.yaml
 ```
 
 ### Logic boundaries
 
 Routes parse/validate, establish auth context, call one use case, and map errors. They contain no SQL. Repositories handle SQL and transaction boundaries; services compose authorization and provider operations. `permissions.ts` is pure and testable. Screens consume the typed API client and shared UI.
+
+Create the scoped wrapped-key registry with the identity migration, in dependency order after user/workspace roots and before invitation lookup-key references. Encryption modules perform authenticated encryption and allowed key access; authorized services validate plaintext and pass ciphertext objects to repositories. Do not put encryption/decryption in a generic Drizzle mapper. Initial profiles, invitation emails, and retained idempotent payloads must already be encrypted.
 
 Implement identity, memberships, child grants, invitation intents, and idempotency/inbox/audit infrastructure now. Create the jobs table in milestone 3 after its referenced capture tables exist. Signature-verified webhooks can reconcile synchronously with retryable inbox state. Invitation status and `/bootstrap` perform bounded reconciliation so the initial flow does not depend on a not-yet-running worker. Membership removal and invitation revocation persist reconciliation-needed state for these bounded retries; the worker later automates recovery.
 
@@ -188,6 +210,7 @@ Child deletion is disabled in the UI until the purge implementation in milestone
 - New account, existing account, revoked invite, expired invite, duplicate callback, delayed webhook, and wrong-recipient acceptance all behave as specified. Ten duplicate deliveries yield one membership/grant set.
 - Test two workspaces, two children in one daycare, and at least owner/staff/guardian roles. All forbidden API reads/writes fail, and guardian cannot fetch another household's child or the daycare roster through Clerk's own APIs.
 - At least 20 alternating concurrent pooled requests across two tenants show zero workspace-context leakage.
+- Synthetic name/email/birthdate markers are absent from plaintext SQL dumps, inbox/idempotency rows, and logs; authorized reads render them correctly. Test ciphertext swapping, tampering, wrong scope, missing keys, duplicate key provisioning, and key-service failure. Development keys cannot be selected in a production configuration.
 - Median account-ready-to-child-created time <=2 minutes in five observed onboarding runs, excluding email arrival/sign-up time; record invite delivery/acceptance separately.
 
 ## Milestone 2 — Manual journal, concurrent care, deterministic handoff
@@ -197,32 +220,47 @@ Child deletion is disabled in the UI until the purge implementation in milestone
 ### Files to create
 
 ```text
-packages/contracts/src/events.ts
-packages/contracts/src/captures.ts
-packages/contracts/src/care.ts
-packages/contracts/src/handoffs.ts
-packages/domain/src/event-rules.ts
-packages/domain/src/time.ts
-packages/domain/src/brief-renderer.ts
-packages/domain/src/brief-renderer.test.ts
-packages/domain/src/time.test.ts
+packages/contracts/src/schemas/events.ts
+packages/contracts/src/schemas/captures.ts
+packages/contracts/src/schemas/care.ts
+packages/contracts/src/schemas/handoffs.ts
+packages/contracts/src/schemas/overview.ts
+packages/contracts/src/types/events.ts
+packages/contracts/src/types/captures.ts
+packages/contracts/src/types/care.ts
+packages/contracts/src/types/handoffs.ts
+packages/contracts/src/types/overview.ts
+packages/domain/src/lib/event-rules.ts
+packages/domain/src/lib/resolve-event-time.ts
+packages/domain/src/lib/brief-renderer.ts
+packages/domain/src/lib/brief-renderer.test.ts
+packages/domain/src/lib/resolve-event-time.test.ts
 packages/db/src/schema/journal.ts
 packages/db/src/schema/care.ts
 packages/db/src/repositories/captures.ts
 packages/db/src/repositories/events.ts
 packages/db/src/repositories/care.ts
 packages/db/src/repositories/handoffs.ts
+packages/db/src/repositories/overview.ts
 packages/db/migrations/0003_journal_and_care.sql
 packages/server/src/services/captures.ts
 packages/server/src/services/events.ts
 packages/server/src/services/care.ts
 packages/server/src/services/handoffs.ts
+packages/server/src/services/overview.ts
 packages/api-client/src/captures.ts
 packages/api-client/src/events.ts
 packages/api-client/src/care.ts
 packages/api-client/src/handoffs.ts
+packages/api-client/src/overview.ts
 packages/ui/src/EventCard.tsx
 packages/ui/src/HandoffCard.tsx
+packages/ui/src/CareSnapshot.tsx
+packages/ui/src/QuickCareActions.tsx
+packages/ui/src/types/care-snapshot.ts
+packages/ui/src/types/quick-care-actions.ts
+packages/features/src/journal/CareDashboardScreen.tsx
+packages/features/src/journal/QuickEntrySheet.tsx
 packages/features/src/journal/JournalScreen.tsx
 packages/features/src/journal/EventEditor.tsx
 packages/features/src/handoff/HandoffScreen.tsx
@@ -233,6 +271,7 @@ apps/api/src/app/v1/captures/index+api.ts
 apps/api/src/app/v1/captures/[captureId]/index+api.ts
 apps/api/src/app/v1/captures/[captureId]/confirm+api.ts
 apps/api/src/app/v1/children/[childId]/events+api.ts
+apps/api/src/app/v1/children/[childId]/overview+api.ts
 apps/api/src/app/v1/events/[eventId]+api.ts
 apps/api/src/app/v1/children/[childId]/care+api.ts
 apps/api/src/app/v1/children/[childId]/handoffs+api.ts
@@ -241,10 +280,11 @@ apps/api/src/app/v1/handoffs/[briefId]/acknowledge+api.ts
 tests/integration/journal-transactions.test.ts
 tests/integration/care-concurrency.test.ts
 tests/integration/handoff-boundaries.test.ts
+tests/integration/overview-access.test.ts
 tests/e2e/manual-handoff.yaml
 ```
 
-Modify both child index routes to compose the shared journal and care controls. Add new schema exports and migrations to the existing migrator. Keep media snapshot fields as empty arrays until milestone 4.
+Modify both child index routes to compose the shared care dashboard and care controls, with full journal history accessible from the dashboard. Add new schema exports and migrations to the existing migrator. Keep media snapshot fields as empty arrays until milestone 4. Do not display a nonfunctional recording control before milestone 3; promote the real manual quick-entry action in this increment.
 
 ### Logic boundaries
 
@@ -257,8 +297,11 @@ Manual form → validated capture draft → confirmation service is the only cre
 - 100 concurrent start requests for A produce one active A session; B can independently have one. Ending A leaves B active.
 - Tests cover: late upload after cutoff; correction of an older event; deletion after brief generation; pending draft; empty brief; first-visit window; stale acknowledgement; two devices acknowledging out of order; event write that rolls back after counter allocation.
 - Every rendered fact has a source revision. No plan becomes a completed feed. Unknown amount/time stays unknown.
+- Event quantities/details, revisions/source quotes, and stored briefs are encrypted, including repeated response bodies. Brief generation decrypts only permitted rows and re-encrypts its saved snapshot. DB checks cover visible metadata; domain validation covers encrypted amount/detail invariants. Run the PII storage tests against this expanded schema.
+- The overview finds latest-known care beyond the first journal page and preserves uncertainty for newly reported unknown-time events. Its caller-specific unread count and child scope cannot leak across users/children; loading the dashboard does not acknowledge a handoff.
 - API p95 journal read and template brief creation <=500 ms against 10,000 synthetic revisions for a child in the test environment, excluding network to the device. Capture query plans if the target fails; do not mask it by silently dropping updates.
 - On-device brief usable within two seconds on the defined test network in 20 runs. Record server latency separately from device/network latency.
+- Complete the quick-entry and handoff comprehension checks in `docs/experience-design.md`. Verify populated, empty, unknown-time, pending, error, large-text, and reader-only states; a checklist-style home does not satisfy the design requirement.
 
 ## Milestone 3 — Voice capture, durable processing, human review
 
@@ -270,8 +313,10 @@ Manual form → validated capture draft → confirmation service is the only cre
 apps/worker/package.json
 apps/worker/tsconfig.json
 apps/worker/src/index.ts
-packages/contracts/src/extraction.ts
-packages/contracts/src/media.ts
+packages/contracts/src/schemas/extraction.ts
+packages/contracts/src/schemas/media.ts
+packages/contracts/src/types/extraction.ts
+packages/contracts/src/types/media.ts
 packages/db/src/schema/media.ts
 packages/db/src/repositories/media.ts
 packages/db/src/repositories/jobs.ts
@@ -332,8 +377,10 @@ Start with worker concurrency two and measured timeouts. A completed transcripti
 - Across at least 20 recordings <=30 seconds, target p95 stop-to-review <=15 seconds on a documented network (for example stable Wi-Fi with >=10 Mbps upload). Also report upload, queue, transcription, extraction, and total timings separately. This is a target to validate, not a provider SLA.
 - Kill the worker after transcription, after extraction but before draft commit, and after job commit but before response. Reclaiming jobs leaves one valid draft and no duplicate confirmed events.
 - Simulate timeout/429/5xx and exhausted retries. Manual entry still works; errors are recoverable; a capture is not falsely marked confirmed.
+- Transcription/extraction checkpoints contain no plaintext transcript outside the encrypted capture. Worker decryption stays scoped to its authorized source, and a crypto/key failure cannot publish a plaintext fallback or a partial event.
 - Kill/reopen the app before upload, during upload, and after complete response loss. All recoverable local captures can be resumed without duplicate effects.
 - Estimated ASR + LLM variable cost per typical recording <=US$0.02 as an initial product budget; calculate from actual audio seconds/token usage and current contracted rates. Report exceptions, including billable retries.
+- Complete the voice discoverability, editing, and permission-denied flows in `docs/experience-design.md` without making manual entry less accessible.
 
 ## Milestone 4 — Photos, short videos, private access, interrupted uploads
 
@@ -390,6 +437,9 @@ packages/server/src/services/quotas.ts
 packages/server/src/services/deletion.ts
 packages/server/src/jobs/purge-child.ts
 packages/server/src/jobs/purge-workspace.ts
+packages/server/src/jobs/rotate-data-keys.ts
+scripts/verify-encrypted-restore.ts
+tests/integration/key-rotation.test.ts
 packages/mobile/src/observability/metrics.ts
 packages/features/src/settings/PrivacySettingsScreen.tsx
 apps/parents/app/settings.tsx
@@ -422,6 +472,7 @@ Telemetry contains metrics and opaque IDs, not journal content. Quotas authorize
 - Test logout/account switching with pending local files; revoked access fails on API requests within the documented verification window. Previously issued signed URLs follow their documented TTL, and new ones are denied.
 - Child/workspace purge reaches a terminal state with zero remaining live objects/references from the test data, including brief snapshots. Crash/retry the purge and verify no double quota decrement or resurrected events.
 - Restore a disposable backup and verify tenant isolation and a known event/revision relationship. Document any provider backup limitations and retention; do not claim physical backup erasure on immediate app deletion.
+- Verify the encryption contract's KEK/DEK rotation, invitation lookup-key transition, encrypted backup recovery, and resumable re-encryption checks. Retain old keys while required records/backups depend on them; child deletion must not destroy a shared workspace key. Include key-service permissions and failures in the runbook.
 - Detect a deliberately stalled queue and exceeded budget from metrics. Verify raw transcript, child name, signed URLs, and secrets are absent from logs and analytics samples.
 - Pin production prompt/model IDs and archive extraction evaluation output with the build. Sensitive behavioral changes require rerunning the fixed evaluation corpus.
 

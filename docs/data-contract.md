@@ -2,14 +2,17 @@
 
 Read alongside [architecture](architecture.md). Names below are the authoritative logical schema for the implementing model; these are specifications, not executable migrations.
 
+The [PII encryption contract](pii-encryption.md) defines physical encrypted columns and key handling. Clear values below describe decrypted domain/API payloads where specified; they must not be duplicated in plaintext database columns.
+
 ## 1. Schema conventions
 
 - PostgreSQL UUIDs for application entities; Clerk IDs remain `text` (`user_…`, `org_…`). `users.id` is not a Supabase `auth.users` ID.
-- Store instants as `timestamptz`, birthdate as `date`, and workspace/capture timezones as IANA strings. All API instants use ISO 8601 UTC; include timezone separately for display and interpretation.
+- Store queryable instants as `timestamptz` and workspace/capture timezones as IANA strings. Birthdate is a validated `YYYY-MM-DD` value inside encrypted profile data. All API instants use ISO 8601 UTC; include timezone separately for display and interpretation.
 - Every tenant-owned row has `workspace_id`. Every child-owned row also has `child_id`. Composite foreign keys enforce workspace/child consistency, not just separate single-column references.
 - Mutable entities have `created_at`, `updated_at`, and integer `version` starting at 1 unless noted. Immutable records have `created_at`. All timestamps are server assigned except explicitly identified capture/event times.
 - All relationships below use foreign keys, indexed on lookup paths. Enumerations are constrained text or PostgreSQL enums, consistently selected in implementation. `?` means nullable.
-- JSONB is limited to validated drafts, discriminated event details, immutable snapshots, provider diagnostics without secrets, and saved idempotent response bodies. Identity, relationships, amounts, times, and permissions are relational columns.
+- Relational columns hold query/access metadata, relationships, timestamps, and permissions. Personal profiles, amounts/details, drafts, source text, and snapshots use validated ciphertext envelopes in JSONB. Their decrypted payloads remain typed and versioned; no plaintext JSON copies are permitted.
+- Persist a root `schemaVersion` in revision and brief snapshot JSON. Capture `schema_version` versions the draft payload. Payload versions are distinct from entity edit versions and prompt/model versions; retain compatible readers for supported old records.
 
 ```mermaid
 erDiagram
@@ -40,13 +43,13 @@ This diagram shows the main relationships. The composite keys and infrastructure
 
 ### `users`
 
-`id uuid PK`, `clerk_user_id text UNIQUE NOT NULL`, `display_name text`, `status active|deleted`, `processing_notice_version text?`, `processing_notice_accepted_at timestamptz?`, timestamps.
+`id uuid PK`, `clerk_user_id text UNIQUE NOT NULL`, `profile_ciphertext jsonb` (display name under user-scoped key), `status active|deleted`, `processing_notice_version text?`, `processing_notice_accepted_at timestamptz?`, timestamps.
 
 This is a minimal identity projection. Clerk owns login methods, password/session data, and email verification. Do not add passwords or a global `parent` role. Display names can be refreshed through reconciliation; account deletion anonymizes attribution where records must be retained, while workspace/child deletion follows the purge policy.
 
 ### `workspaces`
 
-`id uuid PK`, `clerk_org_id text UNIQUE NOT NULL`, `kind household|daycare`, `name text`, `timezone text`, `status active|deleting|deleted`, `storage_budget_bytes bigint`, `storage_reserved_bytes bigint DEFAULT 0`, `storage_used_bytes bigint DEFAULT 0`, timestamps/version.
+`id uuid PK`, `clerk_org_id text UNIQUE NOT NULL`, `kind household|daycare`, `profile_ciphertext jsonb` (workspace name), `timezone text`, `status active|deleting|deleted`, `storage_budget_bytes bigint`, `storage_reserved_bytes bigint DEFAULT 0`, `storage_used_bytes bigint DEFAULT 0`, timestamps/version.
 
 Onboarding creates an Organization using Clerk, then calls workspace initialization with its ID. The API verifies live creator/admin membership before materializing the workspace and initial owner. Retrying initialization returns the same workspace by `clerk_org_id`. An Organization created before app initialization finishes is reconciled on retry; it never grants access to another workspace.
 
@@ -58,7 +61,7 @@ Local role is derived from a server-controlled Clerk role mapping and validated 
 
 ### `children`
 
-`id uuid PK`, `workspace_id uuid FK`, `name text`, `birthdate date?`, `created_by_user_id uuid FK`, `journal_seq bigint DEFAULT 0`, `status active|archived|deleting|deleted`, timestamps/version. UNIQUE `(workspace_id,id)`.
+`id uuid PK`, `workspace_id uuid FK`, `profile_ciphertext jsonb` (name and optional birthdate), `created_by_user_id uuid FK`, `journal_seq bigint DEFAULT 0`, `status active|archived|deleting|deleted`, timestamps/version. UNIQUE `(workspace_id,id)`.
 
 Birthdate is optional to minimize onboarding effort; require it only if an actual product feature uses age. Reject future dates at the API. A child's profile belongs to one workspace. A guardian accessing a daycare profile does not become its owner.
 
@@ -70,9 +73,9 @@ FK `(workspace_id,child_id) → children(workspace_id,id)` and `(workspace_id,us
 
 ### `invitation_intents`
 
-`id uuid PK`, `workspace_id uuid FK`, `clerk_invitation_id text? UNIQUE`, `invitee_email_normalized text`, `intended_app_role`, `invited_by_user_id uuid`, `status pending_send|sent|accepted|revoked|expired|reconcile_needed`, `accepted_by_user_id uuid?`, `expires_at timestamptz`, `accepted_at timestamptz?`, timestamps/version. UNIQUE `(workspace_id,id)`.
+`id uuid PK`, `workspace_id uuid FK`, `clerk_invitation_id text? UNIQUE`, `invitee_ciphertext jsonb` (normalized email), `email_lookup_hash bytea`, `email_lookup_key_id uuid FK data_keys`, `intended_app_role`, `invited_by_user_id uuid`, `status pending_send|sent|accepted|revoked|expired|reconcile_needed`, `accepted_by_user_id uuid?`, `expires_at timestamptz`, `accepted_at timestamptz?`, timestamps/version. UNIQUE `(workspace_id,id)`.
 
-Partial unique index on `(workspace_id,invitee_email_normalized)` for pending/sent/reconcile-needed invitations. Keep email only where needed for invitation matching and management; clear according to retention policy. `expires_at` is enforced locally as well as any provider expiry. Cancelling locally blocks grants even if an old provider link is visited later.
+Partial unique index on `(workspace_id,email_lookup_hash)` for pending/sent/reconcile-needed invitations. The lookup value is a workspace-keyed HMAC, never a plain email hash. Resolve its key in the same workspace and follow the serialized lookup-key rotation procedure in the encryption contract. Keep encrypted email only where needed for invitation matching and management; clear according to retention policy. `expires_at` is enforced locally as well as any provider expiry. Cancelling locally blocks grants even if an old provider link is visited later.
 
 ### `invitation_child_grants`
 
@@ -84,11 +87,11 @@ Apply these to `child_caregivers` only after server reconciliation establishes t
 
 ### `captures`
 
-`id uuid PK`, `workspace_id uuid`, `child_id uuid`, `author_user_id uuid`, `care_session_id uuid?`, `client_capture_id uuid`, `input_kind audio|text|manual`, `captured_at timestamptz`, `timezone text`, `locale text`, `raw_transcript text?`, `formatted_text text?`, `draft_json jsonb?`, `draft_version int DEFAULT 0`, `schema_version int`, `prompt_version text?`, `model_id text?`, `status awaiting_upload|queued|processing|needs_review|confirmed|failed|cancelled`, `error_code text?`, `confirmed_at timestamptz?`, timestamps/version.
+`id uuid PK`, `workspace_id uuid`, `child_id uuid`, `author_user_id uuid`, `care_session_id uuid?`, `client_capture_id uuid`, `input_kind audio|text|manual`, `captured_at timestamptz`, `timezone text`, `locale text`, `content_ciphertext jsonb?` (raw transcript, formatted text, draft), `draft_version int DEFAULT 0`, `schema_version int`, `prompt_version text?`, `model_id text?`, `status awaiting_upload|queued|processing|needs_review|confirmed|failed|cancelled`, `error_code text?`, `confirmed_at timestamptz?`, timestamps/version.
 
 UNIQUE `(workspace_id,author_user_id,client_capture_id)` and `(workspace_id,child_id,id)`. Optional care session must belong to the same child and author; logging does not require an active session. Text skips transcription; manual structured entry skips AI, creates a validated draft, and uses the same confirmation transaction. The author can modify/discard an unconfirmed draft. No other caregiver's brief may treat it as a fact.
 
-`draft_json` includes stable candidate IDs, source spans, field values, ambiguity flags, and discard flags. Unresolved time can be explicitly confirmed as unknown; invalid quantities cannot be confirmed. A confirmed capture is immutable as a source; later corrections update events and add revisions.
+The decrypted draft includes stable candidate IDs, source spans, field values, ambiguity flags, and discard flags. Unresolved time can be explicitly confirmed as unknown; invalid quantities cannot be confirmed. A confirmed capture is immutable as a source; later corrections update events and add revisions. Transcription checkpoints update the encrypted content with version checks; no raw text is copied into job metadata.
 
 ### `media_assets`
 
@@ -100,7 +103,7 @@ Reserve storage bytes atomically before issuing an upload token; settle reservat
 
 ### `events`
 
-`id uuid PK`, `workspace_id uuid`, `child_id uuid`, `capture_id uuid`, `source_candidate_id uuid`, `created_by_user_id uuid`, `last_edited_by_user_id uuid`, `kind feed|diaper|sleep|milestone|note`, `occurred_at timestamptz?`, `ended_at timestamptz?`, `timezone text`, `time_precision exact|approximate|unknown`, `amount_value numeric(10,2)?`, `amount_unit ml|oz|g|minutes?`, `details jsonb`, `important boolean DEFAULT false`, `status active|deleted`, `current_revision_id uuid`, timestamps/version.
+`id uuid PK`, `workspace_id uuid`, `child_id uuid`, `capture_id uuid`, `source_candidate_id uuid`, `created_by_user_id uuid`, `last_edited_by_user_id uuid`, `kind feed|diaper|sleep|milestone|note`, `occurred_at timestamptz?`, `ended_at timestamptz?`, `timezone text`, `time_precision exact|approximate|unknown`, `payload_ciphertext jsonb` (amount, unit, details), `important boolean DEFAULT false`, `status active|deleted`, `current_revision_id uuid`, timestamps/version.
 
 UNIQUE `(capture_id,source_candidate_id)` prevents duplicate confirmation; UNIQUE `(workspace_id,child_id,id)` supports composite FKs. `events` is the current projection for timeline queries. There are no AI-only events hidden among confirmed facts.
 
@@ -114,11 +117,11 @@ Details are a discriminated union validated by the server:
 | Milestone | `description`, optional `quote`, `reportedFirst: boolean` | Preserve reported wording and attribution |
 | Note | `text`, `intent`: observation, planned, or question | Plans/questions cannot be rendered as completed care |
 
-Database checks: amount/unit are both null or both nonnull; amount > 0; `ended_at` requires `occurred_at` and is >= it; unknown occurrence implies unknown precision. Validate type-specific combinations and reasonable bounds in domain code. Store canonical user-approved values; do not normalize away the original unit or source.
+Database checks: `ended_at` requires `occurred_at` and is >= it; unknown occurrence implies unknown precision; required ciphertext envelope is present. Domain validation before encryption and after decryption enforces: amount/unit both null or both nonnull, positive amount with up to two decimal places within the original numeric(10,2) range, allowed unit (ml, oz, g, minutes), type-specific combinations, and reasonable bounds. PostgreSQL cannot inspect encrypted amount/details. Store canonical user-approved values; do not normalize away the original unit or source.
 
 ### `event_revisions`
 
-`id uuid PK`, `workspace_id uuid`, `child_id uuid`, `event_id uuid`, `journal_seq bigint`, `event_version int`, `operation created|corrected|deleted|media_updated`, `actor_user_id uuid`, `snapshot jsonb`, `source_quote text?`, `source_start int?`, `source_end int?`, `created_at timestamptz`.
+`id uuid PK`, `workspace_id uuid`, `child_id uuid`, `event_id uuid`, `journal_seq bigint`, `event_version int`, `operation created|corrected|deleted|media_updated`, `actor_user_id uuid`, `content_ciphertext jsonb` (snapshot and optional source quote), `source_start int?`, `source_end int?`, `created_at timestamptz`.
 
 UNIQUE `(child_id,journal_seq)` and `(event_id,event_version)`; composite FK to the event. Snapshot contains the event's canonical fields and ready image/video asset IDs, never credentials or signed URLs. It is validated against a versioned revision schema. Source spans refer to the raw transcript, not formatted text; null spans are permitted for manual entry.
 
@@ -141,7 +144,7 @@ Example of a **confirmed API event**, after the user has selected September 5 an
 }
 ```
 
-The date and timezone are not inferable from those words alone. The UI must show the proposed date before saving. Numeric decimals are serialized as strings to avoid silently changing database decimal values in JavaScript.
+The date and timezone are not inferable from those words alone. The UI must show the proposed date before saving. Decimal quantities are represented as validated decimal strings in the encrypted payload and API, preserving exact user-approved values without binary floating-point conversion.
 
 ## 4. Sessions and handoff tables
 
@@ -159,7 +162,7 @@ Counter is monotonic and never exceeds an actually acknowledged brief's cutoff. 
 
 ### `handoff_briefs`
 
-`id uuid PK`, `workspace_id uuid`, `child_id uuid`, `recipient_user_id uuid`, `from_seq_exclusive bigint`, `through_seq_inclusive bigint`, `initial_window_start timestamptz?`, `snapshot jsonb`, `renderer_version text`, `status ready|invalidated|redacted`, `acknowledged_at timestamptz?`, `started_session_id uuid?`, `created_at timestamptz`.
+`id uuid PK`, `workspace_id uuid`, `child_id uuid`, `recipient_user_id uuid`, `from_seq_exclusive bigint`, `through_seq_inclusive bigint`, `initial_window_start timestamptz?`, `snapshot_ciphertext jsonb`, `renderer_version text`, `status ready|invalidated|redacted`, `acknowledged_at timestamptz?`, `started_session_id uuid?`, `created_at timestamptz`.
 
 Snapshot contains displayed entries, source event/revision IDs, deterministic text, context labels, pending-capture count at generation, and a disclosed initial-window policy if used. Check `0 <= from_seq <= through_seq`. An empty initial brief at counter zero is valid.
 
@@ -174,9 +177,10 @@ These support failures in the main user flows; do not replace them with in-memor
 | Table | Fields and constraints | Purpose |
 | --- | --- | --- |
 | `jobs` | UUID PK; workspace/child/capture references as applicable; kind (process capture, validate media, purge, reconcile); unique dedupe key; status; payload IDs; checkpoint; attempts; available_at; lease_token; lease_expires_at; last_error_code; timestamps | Durable leased work. Payload references source rows instead of copying transcripts |
-| `idempotency_requests` | Actor user ID, route operation, key; request hash; response status/body; created_at/expires_at; PK `(actor_user_id,operation,key)` | Repeated mutation returns same canonical response; same key/different body returns 409 |
-| `webhook_inbox` | Provider and event ID PK; verified payload or minimal reference; received_at; processing status; processed_at; retry count | Verify signature before inserting; transactionally apply or retry membership/invitation sync |
+| `idempotency_requests` | Actor user ID, route operation, key; user/workspace encryption scope; keyed request fingerprint and key ID; response status plus encrypted canonical response; created_at/expires_at; PK `(actor_user_id,operation,key)` | Reauthorize replay; return same canonical effect; same key/different body returns 409; regenerate temporary URLs |
+| `webhook_inbox` | Provider and event ID PK; minimal verified resource references/lifecycle facts; received_at; processing status; processed_at; retry count | Verify signature before inserting; reconcile current state; never keep raw PII webhook bodies |
 | `audit_log` | UUID PK; workspace/child as applicable; actor; action; entity ID; request ID; created_at | Membership/grant changes, deletions, and handoff acknowledgements; omit raw sensitive content |
+| `data_keys` | UUID PK; exactly one workspace/user FK; content/lookup purpose; version; wrapped key bytes; approved wrapping provider/key reference/context version; state; timestamps; one active key per scope/purpose | Envelope encryption key registry; raw keys and KEK are never stored in Postgres; full constraints in the encryption contract |
 
 Keep infrastructure tables in a non-exposed internal schema. The dispatcher credential can claim queue entries but is not the mobile API credential. Worker use cases obtain workspace context from validated job records and use the same tenant-scoped repositories as the API. Purge has a separately constrained maintenance capability.
 
@@ -221,7 +225,7 @@ A reader's self-reported care session does not upgrade their journal permissions
 
 Base URL `/v1`. All endpoints except health, webhook verification, and invitation landing require a Clerk bearer token. Workspace is explicit in workspace-level paths or resolved from the requested child/capture/brief with an authorization check. JSON DTOs use camelCase. Unknown unauthorized resource IDs return a consistent 404; use 403 for forbidden operations on a resource the user can already see.
 
-For all state-changing app requests, require `Idempotency-Key`. For edits, also require `expectedVersion` (or `expectedDraftVersion`). Conflict returns `409` and the latest authorized version; no silent last-write-wins. Errors use `{code,message,requestId,retryable,fieldErrors?}` without stack traces.
+For all state-changing app requests, require a client-generated UUID `Idempotency-Key`; reject free-text keys that could contain personal data. For edits, also require `expectedVersion` (or `expectedDraftVersion`). Conflict returns `409` and the latest authorized version; no silent last-write-wins. Errors use `{code,message,requestId,retryable,fieldErrors?}` without stack traces or private payload values.
 
 | Endpoint | Behavior |
 | --- | --- |
@@ -244,6 +248,7 @@ For all state-changing app requests, require `Idempotency-Key`. For edits, also 
 | `POST /assets/:assetId/complete` | Verify upload metadata, enqueue content validation |
 | `GET /assets/:assetId` | Reauthorize ready asset and return short-lived URL; raw audio uses source restrictions |
 | `GET /children/:childId/events` | Cursor-paginated confirmed timeline with current revisions; never raw drafts |
+| `GET /children/:childId/overview` | Authorized live dashboard projection: latest known confirmed care, recent activity, active sessions, caller's unread-change count; preserves uncertain occurrence times and never advances a handoff cursor |
 | `PATCH/DELETE /events/:eventId` | Check expected version and author/manager permission; append correction/deletion revision |
 | `GET/POST /children/:childId/care` | List authorized active sessions; POST action is `start` or `end` and affects caller only |
 | `POST /children/:childId/handoffs` | Create recipient-specific bounded snapshot; repeated key returns same brief |

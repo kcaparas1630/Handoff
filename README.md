@@ -8,5 +8,11 @@ Architecture package, prepared September 5, 2026:
 - [Database and API contract](docs/data-contract.md): tables, constraints, access rules, event examples, and endpoints.
 - [Implementation roadmap](docs/implementation-roadmap.md): five incremental milestones with exact files, logic boundaries, and measurable acceptance gates.
 - [Developer handoff](docs/developer-handoff.md): execution instructions for the implementing model.
+- [Architecture questions](docs/architecture-questions.md): languages, platforms, checklists, agent security, and schema evolution.
+- [Experience design](docs/experience-design.md): care dashboard, inviting voice capture, quick entry, handoff presentation, and usability gates.
+- [PII encryption](docs/pii-encryption.md): encrypt before Postgres writes, authorize before server decryption, external key management, rotation, and recovery.
+- [Agent conventions](AGENTS.md): repository instructions, also available through the `CLAUDE.md` symlink; [research rationale](docs/conventions-rationale.md).
 
 This repository currently contains a blueprint, not an implemented application. Performance and product metrics in the roadmap are proposed acceptance targets, not measured results.
+
+`CLAUDE.md` is stored as a relative Git symlink to `AGENTS.md`. This Windows checkout currently lacks symlink privilege and uses Git's link-text fallback; read `AGENTS.md` directly until native symlink support is available. The repository link remains mode `120000`. [Git symlink checkout behavior](https://git-scm.com/docs/git-config#Documentation/git-config.txt-coresymlinks)
