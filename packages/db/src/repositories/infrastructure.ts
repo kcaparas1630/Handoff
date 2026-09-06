@@ -1,0 +1,72 @@
+import { and, eq, sql } from "drizzle-orm";
+import { auditLog, idempotencyRequests, webhookInbox } from "../schema";
+import type { HandoffTransaction } from "../types/database";
+import type {
+  AuditLogRow,
+  IdempotencyRequestRow,
+  NewAuditLogEntry,
+  NewIdempotencyRequest,
+  NewWebhookInboxEntry,
+} from "../types/infrastructure";
+
+export async function findIdempotencyRequest(
+  tx: HandoffTransaction,
+  actorUserId: string,
+  operation: string,
+  key: string,
+): Promise<IdempotencyRequestRow | null> {
+  const [row] = await tx
+    .select()
+    .from(idempotencyRequests)
+    .where(
+      and(
+        eq(idempotencyRequests.actorUserId, actorUserId),
+        eq(idempotencyRequests.operation, operation),
+        eq(idempotencyRequests.key, key),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function insertIdempotencyRequest(
+  tx: HandoffTransaction,
+  input: NewIdempotencyRequest,
+): Promise<IdempotencyRequestRow> {
+  const [row] = await tx.insert(idempotencyRequests).values(input).returning();
+  if (!row) throw new Error("insertIdempotencyRequest returned no row");
+  return row;
+}
+
+/** Returns false when the provider redelivered an event we already recorded. */
+export async function insertWebhookInboxIfAbsent(
+  tx: HandoffTransaction,
+  input: NewWebhookInboxEntry,
+): Promise<boolean> {
+  const inserted = await tx
+    .insert(webhookInbox)
+    .values(input)
+    .onConflictDoNothing({ target: [webhookInbox.provider, webhookInbox.eventId] })
+    .returning({ eventId: webhookInbox.eventId });
+  return inserted.length > 0;
+}
+
+export async function markWebhookProcessed(
+  tx: HandoffTransaction,
+  provider: string,
+  eventId: string,
+): Promise<void> {
+  await tx
+    .update(webhookInbox)
+    .set({ status: "processed", processedAt: sql`now()` })
+    .where(and(eq(webhookInbox.provider, provider), eq(webhookInbox.eventId, eventId)));
+}
+
+export async function insertAuditLog(
+  tx: HandoffTransaction,
+  input: NewAuditLogEntry,
+): Promise<AuditLogRow> {
+  const [row] = await tx.insert(auditLog).values(input).returning();
+  if (!row) throw new Error("insertAuditLog returned no row");
+  return row;
+}

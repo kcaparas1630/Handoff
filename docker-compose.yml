@@ -1,0 +1,15 @@
+# Local development only. Disposable synthetic data; not a deployment artifact.
+services:
+  postgres:
+    image: postgres:17
+    container_name: handoff-pg
+    environment:
+      POSTGRES_PASSWORD: handoff
+      POSTGRES_DB: handoff_dev
+    ports:
+      - "55432:5432"
+    volumes:
+      - handoff-pg-data:/var/lib/postgresql/data
+
+volumes:
+  handoff-pg-data:

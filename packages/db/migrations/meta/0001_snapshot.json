@@ -1,0 +1,1463 @@
+{
+  "id": "410526a7-c856-40a7-86b4-dd33461bff92",
+  "prevId": "4b724bb3-eec6-439f-b57a-768de89a3810",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "handoff.child_caregivers": {
+      "name": "child_caregivers",
+      "schema": "handoff",
+      "columns": {
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "child_id": {
+          "name": "child_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "relationship": {
+          "name": "relationship",
+          "type": "caregiver_relationship",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "permission": {
+          "name": "permission",
+          "type": "child_permission",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "membership_status",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "granted_by_user_id": {
+          "name": "granted_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "child_caregivers_user_status_child_idx": {
+          "name": "child_caregivers_user_status_child_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "child_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "child_caregivers_granted_by_user_id_users_id_fk": {
+          "name": "child_caregivers_granted_by_user_id_users_id_fk",
+          "tableFrom": "child_caregivers",
+          "columnsFrom": ["granted_by_user_id"],
+          "tableTo": "users",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "child_caregivers_child_fk": {
+          "name": "child_caregivers_child_fk",
+          "tableFrom": "child_caregivers",
+          "columnsFrom": ["workspace_id", "child_id"],
+          "tableTo": "children",
+          "schemaTo": "handoff",
+          "columnsTo": ["workspace_id", "id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "child_caregivers_membership_fk": {
+          "name": "child_caregivers_membership_fk",
+          "tableFrom": "child_caregivers",
+          "columnsFrom": ["workspace_id", "user_id"],
+          "tableTo": "workspace_memberships",
+          "schemaTo": "handoff",
+          "columnsTo": ["workspace_id", "user_id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "child_caregivers_workspace_id_child_id_user_id_pk": {
+          "name": "child_caregivers_workspace_id_child_id_user_id_pk",
+          "columns": ["workspace_id", "child_id", "user_id"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "handoff.children": {
+      "name": "children",
+      "schema": "handoff",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile_ciphertext": {
+          "name": "profile_ciphertext",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "journal_seq": {
+          "name": "journal_seq",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "status": {
+          "name": "status",
+          "type": "child_status",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "children_workspace_id_id_key": {
+          "name": "children_workspace_id_id_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "children_workspace_status_idx": {
+          "name": "children_workspace_status_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "children_workspace_id_workspaces_id_fk": {
+          "name": "children_workspace_id_workspaces_id_fk",
+          "tableFrom": "children",
+          "columnsFrom": ["workspace_id"],
+          "tableTo": "workspaces",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "children_created_by_user_id_users_id_fk": {
+          "name": "children_created_by_user_id_users_id_fk",
+          "tableFrom": "children",
+          "columnsFrom": ["created_by_user_id"],
+          "tableTo": "users",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "handoff.data_keys": {
+      "name": "data_keys",
+      "schema": "handoff",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "data_key_purpose",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wrapped_key": {
+          "name": "wrapped_key",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wrapping_provider": {
+          "name": "wrapping_provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wrapping_key_ref": {
+          "name": "wrapping_key_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "wrapping_context_version": {
+          "name": "wrapping_context_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "data_key_state",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "reserved_encryptions": {
+          "name": "reserved_encryptions",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "data_keys_active_workspace_purpose_idx": {
+          "name": "data_keys_active_workspace_purpose_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "purpose",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"handoff\".\"data_keys\".\"state\" = 'active' AND \"handoff\".\"data_keys\".\"workspace_id\" IS NOT NULL",
+          "concurrently": false
+        },
+        "data_keys_active_user_purpose_idx": {
+          "name": "data_keys_active_user_purpose_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "purpose",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"handoff\".\"data_keys\".\"state\" = 'active' AND \"handoff\".\"data_keys\".\"user_id\" IS NOT NULL",
+          "concurrently": false
+        },
+        "data_keys_workspace_purpose_version_idx": {
+          "name": "data_keys_workspace_purpose_version_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "purpose",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"handoff\".\"data_keys\".\"workspace_id\" IS NOT NULL",
+          "concurrently": false
+        },
+        "data_keys_user_purpose_version_idx": {
+          "name": "data_keys_user_purpose_version_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "purpose",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"handoff\".\"data_keys\".\"user_id\" IS NOT NULL",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "data_keys_workspace_id_workspaces_id_fk": {
+          "name": "data_keys_workspace_id_workspaces_id_fk",
+          "tableFrom": "data_keys",
+          "columnsFrom": ["workspace_id"],
+          "tableTo": "workspaces",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "data_keys_user_id_users_id_fk": {
+          "name": "data_keys_user_id_users_id_fk",
+          "tableFrom": "data_keys",
+          "columnsFrom": ["user_id"],
+          "tableTo": "users",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "data_keys_single_scope_check": {
+          "name": "data_keys_single_scope_check",
+          "value": "(\"handoff\".\"data_keys\".\"workspace_id\" IS NULL) <> (\"handoff\".\"data_keys\".\"user_id\" IS NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "handoff.users": {
+      "name": "users",
+      "schema": "handoff",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "clerk_user_id": {
+          "name": "clerk_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile_ciphertext": {
+          "name": "profile_ciphertext",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "user_status",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "processing_notice_version": {
+          "name": "processing_notice_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "processing_notice_accepted_at": {
+          "name": "processing_notice_accepted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "users_clerk_user_id_unique": {
+          "name": "users_clerk_user_id_unique",
+          "columns": ["clerk_user_id"],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "handoff.workspace_memberships": {
+      "name": "workspace_memberships",
+      "schema": "handoff",
+      "columns": {
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "clerk_membership_id": {
+          "name": "clerk_membership_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "app_role": {
+          "name": "app_role",
+          "type": "app_role",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "membership_status",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "provider_verified_at": {
+          "name": "provider_verified_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "workspace_memberships_user_status_idx": {
+          "name": "workspace_memberships_user_status_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "workspace_memberships_workspace_id_workspaces_id_fk": {
+          "name": "workspace_memberships_workspace_id_workspaces_id_fk",
+          "tableFrom": "workspace_memberships",
+          "columnsFrom": ["workspace_id"],
+          "tableTo": "workspaces",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "workspace_memberships_user_id_users_id_fk": {
+          "name": "workspace_memberships_user_id_users_id_fk",
+          "tableFrom": "workspace_memberships",
+          "columnsFrom": ["user_id"],
+          "tableTo": "users",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "workspace_memberships_workspace_id_user_id_pk": {
+          "name": "workspace_memberships_workspace_id_user_id_pk",
+          "columns": ["workspace_id", "user_id"]
+        }
+      },
+      "uniqueConstraints": {
+        "workspace_memberships_clerk_membership_id_unique": {
+          "name": "workspace_memberships_clerk_membership_id_unique",
+          "columns": ["clerk_membership_id"],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "handoff.workspaces": {
+      "name": "workspaces",
+      "schema": "handoff",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "clerk_org_id": {
+          "name": "clerk_org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "workspace_kind",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile_ciphertext": {
+          "name": "profile_ciphertext",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "workspace_status",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "storage_budget_bytes": {
+          "name": "storage_budget_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_reserved_bytes": {
+          "name": "storage_reserved_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "storage_used_bytes": {
+          "name": "storage_used_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "workspaces_clerk_org_id_unique": {
+          "name": "workspaces_clerk_org_id_unique",
+          "columns": ["clerk_org_id"],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "handoff.audit_log": {
+      "name": "audit_log",
+      "schema": "handoff",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "child_id": {
+          "name": "child_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_type": {
+          "name": "entity_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "handoff.idempotency_requests": {
+      "name": "idempotency_requests",
+      "schema": "handoff",
+      "columns": {
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operation": {
+          "name": "operation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_kind": {
+          "name": "scope_kind",
+          "type": "encryption_scope_kind",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope_workspace_id": {
+          "name": "scope_workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "request_fingerprint": {
+          "name": "request_fingerprint",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fingerprint_key_id": {
+          "name": "fingerprint_key_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "response_status": {
+          "name": "response_status",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "response_ciphertext": {
+          "name": "response_ciphertext",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "idempotency_requests_actor_user_id_users_id_fk": {
+          "name": "idempotency_requests_actor_user_id_users_id_fk",
+          "tableFrom": "idempotency_requests",
+          "columnsFrom": ["actor_user_id"],
+          "tableTo": "users",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "idempotency_requests_scope_workspace_id_workspaces_id_fk": {
+          "name": "idempotency_requests_scope_workspace_id_workspaces_id_fk",
+          "tableFrom": "idempotency_requests",
+          "columnsFrom": ["scope_workspace_id"],
+          "tableTo": "workspaces",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "idempotency_requests_fingerprint_key_id_data_keys_id_fk": {
+          "name": "idempotency_requests_fingerprint_key_id_data_keys_id_fk",
+          "tableFrom": "idempotency_requests",
+          "columnsFrom": ["fingerprint_key_id"],
+          "tableTo": "data_keys",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "idempotency_requests_actor_user_id_operation_key_pk": {
+          "name": "idempotency_requests_actor_user_id_operation_key_pk",
+          "columns": ["actor_user_id", "operation", "key"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "idempotency_requests_scope_check": {
+          "name": "idempotency_requests_scope_check",
+          "value": "(\"handoff\".\"idempotency_requests\".\"scope_kind\" = 'workspace') = (\"handoff\".\"idempotency_requests\".\"scope_workspace_id\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "handoff.invitation_child_grants": {
+      "name": "invitation_child_grants",
+      "schema": "handoff",
+      "columns": {
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "invitation_intent_id": {
+          "name": "invitation_intent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "child_id": {
+          "name": "child_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "relationship": {
+          "name": "relationship",
+          "type": "caregiver_relationship",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "permission": {
+          "name": "permission",
+          "type": "child_permission",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "invitation_child_grants_intent_fk": {
+          "name": "invitation_child_grants_intent_fk",
+          "tableFrom": "invitation_child_grants",
+          "columnsFrom": ["workspace_id", "invitation_intent_id"],
+          "tableTo": "invitation_intents",
+          "schemaTo": "handoff",
+          "columnsTo": ["workspace_id", "id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "invitation_child_grants_child_fk": {
+          "name": "invitation_child_grants_child_fk",
+          "tableFrom": "invitation_child_grants",
+          "columnsFrom": ["workspace_id", "child_id"],
+          "tableTo": "children",
+          "schemaTo": "handoff",
+          "columnsTo": ["workspace_id", "id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "invitation_child_grants_invitation_intent_id_child_id_pk": {
+          "name": "invitation_child_grants_invitation_intent_id_child_id_pk",
+          "columns": ["invitation_intent_id", "child_id"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "handoff.invitation_intents": {
+      "name": "invitation_intents",
+      "schema": "handoff",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "clerk_invitation_id": {
+          "name": "clerk_invitation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invitee_ciphertext": {
+          "name": "invitee_ciphertext",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email_lookup_hash": {
+          "name": "email_lookup_hash",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email_lookup_key_id": {
+          "name": "email_lookup_key_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "intended_app_role": {
+          "name": "intended_app_role",
+          "type": "app_role",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "invited_by_user_id": {
+          "name": "invited_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "invitation_status",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending_send'"
+        },
+        "accepted_by_user_id": {
+          "name": "accepted_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "invitation_intents_workspace_id_id_key": {
+          "name": "invitation_intents_workspace_id_id_key",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "invitation_intents_open_lookup_idx": {
+          "name": "invitation_intents_open_lookup_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "email_lookup_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"handoff\".\"invitation_intents\".\"status\" IN ('pending_send', 'sent', 'reconcile_needed')",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "invitation_intents_workspace_id_workspaces_id_fk": {
+          "name": "invitation_intents_workspace_id_workspaces_id_fk",
+          "tableFrom": "invitation_intents",
+          "columnsFrom": ["workspace_id"],
+          "tableTo": "workspaces",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "invitation_intents_email_lookup_key_id_data_keys_id_fk": {
+          "name": "invitation_intents_email_lookup_key_id_data_keys_id_fk",
+          "tableFrom": "invitation_intents",
+          "columnsFrom": ["email_lookup_key_id"],
+          "tableTo": "data_keys",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "invitation_intents_invited_by_user_id_users_id_fk": {
+          "name": "invitation_intents_invited_by_user_id_users_id_fk",
+          "tableFrom": "invitation_intents",
+          "columnsFrom": ["invited_by_user_id"],
+          "tableTo": "users",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "invitation_intents_accepted_by_user_id_users_id_fk": {
+          "name": "invitation_intents_accepted_by_user_id_users_id_fk",
+          "tableFrom": "invitation_intents",
+          "columnsFrom": ["accepted_by_user_id"],
+          "tableTo": "users",
+          "schemaTo": "handoff",
+          "columnsTo": ["id"],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "invitation_intents_clerk_invitation_id_unique": {
+          "name": "invitation_intents_clerk_invitation_id_unique",
+          "columns": ["clerk_invitation_id"],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "handoff.webhook_inbox": {
+      "name": "webhook_inbox",
+      "schema": "handoff",
+      "columns": {
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "clerk_org_id": {
+          "name": "clerk_org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "clerk_user_id": {
+          "name": "clerk_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "clerk_membership_id": {
+          "name": "clerk_membership_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "clerk_invitation_id": {
+          "name": "clerk_invitation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "status": {
+          "name": "status",
+          "type": "webhook_status",
+          "typeSchema": "handoff",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'received'"
+        },
+        "processed_at": {
+          "name": "processed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retry_count": {
+          "name": "retry_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "webhook_inbox_provider_event_id_pk": {
+          "name": "webhook_inbox_provider_event_id_pk",
+          "columns": ["provider", "event_id"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "handoff.app_role": {
+      "name": "app_role",
+      "schema": "handoff",
+      "values": ["owner", "staff", "caregiver", "guardian"]
+    },
+    "handoff.caregiver_relationship": {
+      "name": "caregiver_relationship",
+      "schema": "handoff",
+      "values": ["parent", "relative", "caregiver", "other"]
+    },
+    "handoff.child_permission": {
+      "name": "child_permission",
+      "schema": "handoff",
+      "values": ["reader", "contributor", "manager"]
+    },
+    "handoff.child_status": {
+      "name": "child_status",
+      "schema": "handoff",
+      "values": ["active", "archived", "deleting", "deleted"]
+    },
+    "handoff.data_key_purpose": {
+      "name": "data_key_purpose",
+      "schema": "handoff",
+      "values": ["content", "lookup"]
+    },
+    "handoff.data_key_state": {
+      "name": "data_key_state",
+      "schema": "handoff",
+      "values": ["active", "decrypt_only", "retired"]
+    },
+    "handoff.encryption_scope_kind": {
+      "name": "encryption_scope_kind",
+      "schema": "handoff",
+      "values": ["workspace", "user"]
+    },
+    "handoff.invitation_status": {
+      "name": "invitation_status",
+      "schema": "handoff",
+      "values": ["pending_send", "sent", "accepted", "revoked", "expired", "reconcile_needed"]
+    },
+    "handoff.membership_status": {
+      "name": "membership_status",
+      "schema": "handoff",
+      "values": ["active", "revoked"]
+    },
+    "handoff.user_status": {
+      "name": "user_status",
+      "schema": "handoff",
+      "values": ["active", "deleted"]
+    },
+    "handoff.webhook_status": {
+      "name": "webhook_status",
+      "schema": "handoff",
+      "values": ["received", "processed", "failed"]
+    },
+    "handoff.workspace_kind": {
+      "name": "workspace_kind",
+      "schema": "handoff",
+      "values": ["household", "daycare"]
+    },
+    "handoff.workspace_status": {
+      "name": "workspace_status",
+      "schema": "handoff",
+      "values": ["active", "deleting", "deleted"]
+    }
+  },
+  "schemas": {
+    "handoff": "handoff"
+  },
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
