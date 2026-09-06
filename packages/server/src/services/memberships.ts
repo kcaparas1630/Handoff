@@ -1,11 +1,11 @@
 // Membership freshness, revocation, and the workspace roster.
 import {
+  careRepository,
   childrenRepository,
   identityRepository,
   infrastructureRepository,
   withTenantTransaction,
 } from "@handoff/db";
-import type { HandoffTransaction, WorkspaceMembershipRow } from "@handoff/db";
 import type { WorkspaceMemberDto } from "@handoff/contracts";
 import { authorizeWorkspace } from "../auth/authorize";
 import { ApiHttpError } from "../http/errors";
@@ -19,50 +19,64 @@ const MAX_LOCAL_VERIFICATION_AGE_MS = 60_000;
 
 /**
  * Re-verifies a stale membership with Clerk for bootstrap, invitation, and admin operations.
- * If the provider no longer reports the membership, access is denied rather than served stale.
+ * The provider call happens between two short transactions rather than inside the caller's, so
+ * no tenant transaction is ever held open across a network request (architecture §4). If the
+ * provider no longer reports the membership, local access is revoked and the caller is denied.
  */
-export async function ensureFreshMembership({
+export async function refreshMembershipIfStale({
   deps,
-  tx,
-  membership,
-  clerkOrgId,
+  userId,
+  workspaceId,
 }: {
   deps: ServiceDeps;
-  tx: HandoffTransaction;
-  membership: WorkspaceMembershipRow;
-  clerkOrgId: string;
-}): Promise<WorkspaceMembershipRow> {
-  const ageMs = deps.now().getTime() - membership.providerVerifiedAt.getTime();
-  if (ageMs <= MAX_LOCAL_VERIFICATION_AGE_MS) return membership;
-
-  const user = await identityRepository.findUserById(tx, membership.userId);
-  if (user === null) throw ApiHttpError.notFound("That workspace is not available");
+  userId: string;
+  workspaceId: string;
+}): Promise<void> {
+  const stale = await withTenantTransaction(deps.db, { workspaceId }, async (tx) => {
+    const memberships = await identityRepository.listActiveMembershipsForUser(tx, userId);
+    const found = memberships.find((row) => row.membership.workspaceId === workspaceId);
+    // A missing or inactive membership is the caller's own 404 to report, not this function's.
+    if (found === undefined || found.workspace.status !== "active") return null;
+    const ageMs = deps.now().getTime() - found.membership.providerVerifiedAt.getTime();
+    if (ageMs <= MAX_LOCAL_VERIFICATION_AGE_MS) return null;
+    const user = await identityRepository.findUserById(tx, found.membership.userId);
+    if (user === null) return null;
+    return {
+      membership: found.membership,
+      clerkOrgId: found.workspace.clerkOrgId,
+      clerkUserId: user.clerkUserId,
+    };
+  });
+  if (stale === null) return;
 
   const current = await deps.clerk.getOrganizationMembership({
-    clerkOrgId,
-    clerkUserId: user.clerkUserId,
+    clerkOrgId: stale.clerkOrgId,
+    clerkUserId: stale.clerkUserId,
   });
-  if (current === null) {
-    await identityRepository.revokeMembership(tx, {
-      workspaceId: membership.workspaceId,
-      userId: membership.userId,
-      expectedVersion: membership.version,
-    });
-    throw ApiHttpError.notFound("That workspace is not available");
-  }
 
-  return identityRepository.upsertMembership(tx, {
-    workspaceId: membership.workspaceId,
-    userId: membership.userId,
-    clerkMembershipId: current.clerkMembershipId,
-    appRole: mapClerkRoleToAppRole({
-      clerkRole: current.role,
-      intendedAppRole: membership.appRole,
-      guardianRoleKey: deps.guardianRoleKey,
-    }),
-    status: "active",
-    providerVerifiedAt: deps.now(),
+  await withTenantTransaction(deps.db, { workspaceId }, async (tx) => {
+    if (current === null) {
+      await identityRepository.revokeMembership(tx, {
+        workspaceId,
+        userId,
+        expectedVersion: stale.membership.version,
+      });
+      return;
+    }
+    await identityRepository.upsertMembership(tx, {
+      workspaceId,
+      userId,
+      clerkMembershipId: current.clerkMembershipId,
+      appRole: mapClerkRoleToAppRole({
+        clerkRole: current.role,
+        intendedAppRole: stale.membership.appRole,
+        guardianRoleKey: deps.guardianRoleKey,
+      }),
+      status: "active",
+      providerVerifiedAt: deps.now(),
+    });
   });
+  if (current === null) throw ApiHttpError.notFound("That workspace is not available");
 }
 
 export async function revokeMember({
@@ -76,12 +90,10 @@ export async function revokeMember({
   workspaceId: string;
   targetUserId: string;
 }): Promise<{ userId: string; status: "revoked" }> {
+  await refreshMembershipIfStale({ deps, userId: actorUserId, workspaceId });
+
   const target = await withTenantTransaction(deps.db, { workspaceId }, async (tx) => {
-    const actor = await authorizeWorkspace(tx, {
-      userId: actorUserId,
-      workspaceId,
-      freshness: { deps },
-    });
+    const actor = await authorizeWorkspace(tx, { userId: actorUserId, workspaceId });
     if (actor.membership.appRole !== "owner") {
       throw ApiHttpError.forbidden("Only a workspace owner can remove a member");
     }
@@ -119,6 +131,13 @@ export async function revokeMember({
         userId: targetUserId,
       });
     }
+
+    // Revocation closes that member's declared care, and nobody else's (data contract §4).
+    await careRepository.endAllSessionsForUserInWorkspace(tx, {
+      workspaceId,
+      userId: targetUserId,
+      endReason: "membership_revoked",
+    });
 
     const user = await identityRepository.findUserById(tx, targetUserId);
     await infrastructureRepository.insertAuditLog(tx, {

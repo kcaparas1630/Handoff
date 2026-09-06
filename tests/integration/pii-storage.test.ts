@@ -10,9 +10,14 @@ import { workspaceScope } from "../../packages/server/src/lib/record-contexts";
 import { createDataKeyService } from "../../packages/server/src/security/encryption/data-keys";
 import { createDevelopmentKeyWrapper } from "../../packages/server/src/security/encryption/development-key-wrapper";
 import { bootstrap } from "../../packages/server/src/services/bootstrap";
+import { confirmCapture } from "../../packages/server/src/services/capture-confirmation";
+import { createCapture } from "../../packages/server/src/services/captures";
 import { createChild, getChild } from "../../packages/server/src/services/children";
+import { getEvent } from "../../packages/server/src/services/events";
+import { createBrief, getBrief } from "../../packages/server/src/services/handoffs";
 import { createInvitation, getInvitation } from "../../packages/server/src/services/invitations";
 import { initializeWorkspace } from "../../packages/server/src/services/workspaces";
+import { candidate } from "./support/journal-fixtures";
 import type { DbClient } from "../../packages/db/src/client";
 import type { ServiceDeps } from "../../packages/server/src/types/runtime";
 import { createFakeClerkGateway } from "./support/fake-clerk-gateway";
@@ -32,6 +37,9 @@ const MARKERS = {
   birthdate: "2024-03-17",
   email: "marker-invite-9f3a@example.test",
   idempotentBody: "Marker-Idempotent-9f3a",
+  eventNote: "Marker-Note-9f3a",
+  milestoneQuote: "Marker-Quote-9f3a",
+  sourceQuote: "Marker-Transcript-9f3a",
 };
 
 async function dumpDatabase(adminUrl: string): Promise<string> {
@@ -65,6 +73,9 @@ describeIntegration("personal data at rest", () => {
   let childId: string;
   let otherChildId: string;
   let invitationId: string;
+  let noteEventId: string;
+  let milestoneEventId: string;
+  let briefId: string;
 
   beforeAll(async () => {
     database = await createTestDatabase();
@@ -136,6 +147,50 @@ describeIntegration("personal data at rest", () => {
     });
     invitationId = invitation.id;
 
+    const noteCandidate = candidate({
+      kind: "note",
+      occurredAt: new Date().toISOString(),
+      sourceQuote: MARKERS.sourceQuote,
+      details: { kind: "note", text: MARKERS.eventNote, intent: "observation" },
+    });
+    const milestoneCandidate = candidate({
+      kind: "milestone",
+      occurredAt: new Date().toISOString(),
+      details: {
+        kind: "milestone",
+        description: "First word",
+        quote: MARKERS.milestoneQuote,
+        reportedFirst: true,
+      },
+    });
+    const capture = await createCapture({
+      deps,
+      actorUserId: ownerId,
+      input: {
+        childId,
+        clientCaptureId: randomUUID(),
+        inputKind: "manual",
+        capturedAt: new Date().toISOString(),
+        timezone: "UTC",
+        locale: "en-CA",
+        candidates: [noteCandidate, milestoneCandidate],
+      },
+    });
+    const confirmed = await confirmCapture({
+      deps,
+      actorUserId: ownerId,
+      captureId: capture.id,
+      input: {
+        expectedDraftVersion: capture.draftVersion,
+        candidates: [noteCandidate, milestoneCandidate].map(
+          ({ sourceStart: _s, sourceEnd: _e, ...rest }) => rest,
+        ),
+      },
+    });
+    noteEventId = confirmed.events[0]?.id ?? "";
+    milestoneEventId = confirmed.events[1]?.id ?? "";
+    briefId = (await createBrief({ deps, actorUserId: ownerId, childId })).id;
+
     await withTenantTransaction(api.db, { workspaceId }, (tx) =>
       runIdempotent({
         tx,
@@ -182,6 +237,21 @@ describeIntegration("personal data at rest", () => {
     const self = await bootstrap({ deps, clerkUserId: "user_marker" });
     expect(self.user.displayName).toBe(MARKERS.userName);
     expect(self.workspaces[0]?.name).toBe(MARKERS.workspaceName);
+  });
+
+  it("returns journal text, quotes, and the stored brief to an authorized reader", async () => {
+    const note = await getEvent({ deps, actorUserId: ownerId, eventId: noteEventId });
+    expect(note.details).toMatchObject({ kind: "note", text: MARKERS.eventNote });
+    // The source quote lives in the revision snapshot, not in a column.
+    expect(note.sourceQuote).toBe(MARKERS.sourceQuote);
+
+    const milestone = await getEvent({ deps, actorUserId: ownerId, eventId: milestoneEventId });
+    expect(milestone.details).toMatchObject({ quote: MARKERS.milestoneQuote });
+
+    const brief = await getBrief({ deps, actorUserId: ownerId, briefId });
+    const rendered = JSON.stringify(brief.snapshot);
+    expect(rendered).toContain(MARKERS.eventNote);
+    expect(rendered).toContain(MARKERS.milestoneQuote);
   });
 
   it("replays a stored idempotent response and rejects a reused key with a new body", async () => {

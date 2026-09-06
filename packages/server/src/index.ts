@@ -49,6 +49,8 @@ export { ApiHttpError, toErrorResponse } from "./http/errors";
 export { createHandler } from "./http/handler";
 export { inTenantTransaction } from "./lib/in-tenant-transaction";
 export type { ScopedTransaction } from "./lib/in-tenant-transaction";
+export { withTenantTransactionOptions } from "./lib/tenant-transaction-options";
+export { decodeEventCursor, encodeEventCursor } from "./lib/event-cursor";
 export { runIdempotent } from "./http/idempotency";
 export type { IdempotentResult } from "./http/idempotency";
 export type {
@@ -61,11 +63,7 @@ export type {
 
 export { createClerkGateway } from "./auth/clerk";
 export { authorizeChild, authorizeWorkspace } from "./auth/authorize";
-export type {
-  ChildAuthorization,
-  ProviderFreshness,
-  WorkspaceAuthorization,
-} from "./types/authorization";
+export type { ChildAuthorization, WorkspaceAuthorization } from "./types/authorization";
 export type { ClerkGateway, ClerkMembership, ClerkSubject } from "./types/clerk";
 export {
   isClerkOrgAdmin,
@@ -85,10 +83,33 @@ export {
 } from "./services/invitations";
 export { applyAcceptedInvitation } from "./services/invitation-acceptance";
 export type { InvitationApplication } from "./services/invitation-acceptance";
-export { ensureFreshMembership, listMembers, revokeMember } from "./services/memberships";
-export { resolveChildWorkspace, resolveInvitationWorkspace } from "./services/workspace-lookup";
+export { listMembers, refreshMembershipIfStale, revokeMember } from "./services/memberships";
+export {
+  resolveBriefWorkspace,
+  resolveCaptureWorkspace,
+  resolveChildWorkspace,
+  resolveEventLocation,
+  resolveInvitationWorkspace,
+} from "./services/workspace-lookup";
+export { createCapture, getCapture, updateCaptureDraft } from "./services/captures";
+export { confirmCapture } from "./services/capture-confirmation";
+export { correctEvent, deleteEvent, getEvent, listEvents } from "./services/events";
+export { endCare, listCare, startCare } from "./services/care";
+export { createBrief, getBrief } from "./services/handoffs";
+export { acknowledgeBrief } from "./services/handoff-acknowledgement";
+export { getOverview } from "./services/overview";
 export { handleClerkWebhook } from "./services/clerk-webhooks";
 export type { WebhookOutcome } from "./services/clerk-webhooks";
+export {
+  decryptBriefSnapshot,
+  decryptCaptureDraft,
+  decryptEventPayload,
+  decryptRevisionSnapshot,
+  encryptBriefSnapshot,
+  encryptCaptureDraft,
+  encryptEventPayload,
+  encryptRevisionSnapshot,
+} from "./security/journal-fields";
 export {
   childProfilePayloadSchema,
   idempotentResponsePayloadSchema,

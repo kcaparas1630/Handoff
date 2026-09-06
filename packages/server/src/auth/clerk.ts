@@ -36,17 +36,25 @@ async function callProvider<T>(operation: () => Promise<T>): Promise<T> {
 export function createClerkGateway({
   secretKey,
   webhookSigningSecret,
+  /** Accepted `azp` values. Omitted leaves Clerk's own default, which accepts any party. */
+  authorizedParties,
   client = createClerkClient({ secretKey }),
 }: {
   secretKey: string;
   webhookSigningSecret: string;
+  authorizedParties?: string[];
   client?: ClerkClient;
 }): ClerkGateway {
   return {
     async verifySessionToken(token: string): Promise<ClerkSubject> {
       let subject: string | undefined;
       try {
-        const payload = await verifyToken(token, { secretKey });
+        // Binding the authorized party is what stops a token minted for another application
+        // from being replayed against this API.
+        const payload = await verifyToken(token, {
+          secretKey,
+          ...(authorizedParties === undefined ? {} : { authorizedParties }),
+        });
         subject = payload.sub;
       } catch {
         throw ApiHttpError.unauthorized("The session token is not valid");

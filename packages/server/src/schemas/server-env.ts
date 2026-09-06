@@ -18,11 +18,23 @@ const absoluteUrl = (name: string) =>
     .min(1, `${name} must not be empty`)
     .refine(isAbsoluteUrl, `${name} must be an absolute URL`);
 
+/** An empty or whitespace-only setting is treated as absent rather than as "accept nothing". */
+function splitAuthorizedParties(value: string | undefined): string[] | null {
+  if (value === undefined) return null;
+  const parties = value
+    .split(",")
+    .map((party) => party.trim())
+    .filter((party) => party !== "");
+  return parties.length === 0 ? null : parties;
+}
+
 const rawServerEnvSchema = z.object({
   NODE_ENV: z.string().optional(),
   CLERK_SECRET_KEY: requiredSecret("CLERK_SECRET_KEY"),
   CLERK_WEBHOOK_SIGNING_SECRET: requiredSecret("CLERK_WEBHOOK_SIGNING_SECRET"),
   CLERK_GUARDIAN_ROLE_KEY: requiredSecret("CLERK_GUARDIAN_ROLE_KEY"),
+  // Comma separated list of accepted token `azp` values; omitted leaves Clerk's default.
+  CLERK_AUTHORIZED_PARTIES: z.string().min(1).optional(),
   DATABASE_URL: requiredSecret("DATABASE_URL"),
   PII_KEY_PROVIDER: z.enum(["kms", "development"], {
     error: 'PII_KEY_PROVIDER must be "kms" or "development"',
@@ -79,6 +91,7 @@ export const serverEnvSchema = rawServerEnvSchema
     clerkSecretKey: value.CLERK_SECRET_KEY,
     clerkWebhookSigningSecret: value.CLERK_WEBHOOK_SIGNING_SECRET,
     clerkGuardianRoleKey: value.CLERK_GUARDIAN_ROLE_KEY,
+    clerkAuthorizedParties: splitAuthorizedParties(value.CLERK_AUTHORIZED_PARTIES),
     databaseUrl: value.DATABASE_URL,
     invitationRedirectUrl: value.INVITATION_REDIRECT_URL,
     appLinkParents: value.APP_LINK_PARENTS,

@@ -37,3 +37,19 @@ export function idempotencyResponseRecord(
     column: "response_ciphertext",
   };
 }
+
+export function eventPayloadRecord(eventId: string): RecordContext {
+  return { table: "events", rowId: eventId, column: "payload_ciphertext" };
+}
+
+export function revisionSnapshotRecord(revisionId: string): RecordContext {
+  return { table: "event_revisions", rowId: revisionId, column: "content_ciphertext" };
+}
+
+export function captureDraftRecord(captureId: string): RecordContext {
+  return { table: "captures", rowId: captureId, column: "content_ciphertext" };
+}
+
+export function briefSnapshotRecord(briefId: string): RecordContext {
+  return { table: "handoff_briefs", rowId: briefId, column: "snapshot_ciphertext" };
+}

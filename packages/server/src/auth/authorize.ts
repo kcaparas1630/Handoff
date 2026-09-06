@@ -4,16 +4,16 @@ import { childrenRepository, identityRepository } from "@handoff/db";
 import { resolveEffectiveChildPermission } from "@handoff/domain";
 import type { HandoffTransaction } from "@handoff/db";
 import { ApiHttpError } from "../http/errors";
-import { ensureFreshMembership } from "../services/memberships";
-import type {
-  ChildAuthorization,
-  ProviderFreshness,
-  WorkspaceAuthorization,
-} from "../types/authorization";
+import type { ChildAuthorization, WorkspaceAuthorization } from "../types/authorization";
 
+/**
+ * Local authorization only. Operations that need provider-fresh membership call
+ * `refreshMembershipIfStale` before they open their transaction, so no Clerk request is ever
+ * made while a tenant transaction is held open.
+ */
 export async function authorizeWorkspace(
   tx: HandoffTransaction,
-  input: { userId: string; workspaceId: string; freshness?: ProviderFreshness },
+  input: { userId: string; workspaceId: string },
 ): Promise<WorkspaceAuthorization> {
   // Runs inside the tenant transaction, so row-level security has already narrowed the rows.
   const memberships = await identityRepository.listActiveMembershipsForUser(tx, input.userId);
@@ -21,25 +21,12 @@ export async function authorizeWorkspace(
   if (found === undefined || found.workspace.status !== "active") {
     throw ApiHttpError.notFound("That workspace is not available");
   }
-  if (input.freshness === undefined) return found;
-
-  const membership = await ensureFreshMembership({
-    deps: input.freshness.deps,
-    tx,
-    membership: found.membership,
-    clerkOrgId: found.workspace.clerkOrgId,
-  });
-  return { membership, workspace: found.workspace };
+  return found;
 }
 
 export async function authorizeChild(
   tx: HandoffTransaction,
-  input: {
-    userId: string;
-    workspaceId: string;
-    childId: string;
-    freshness?: ProviderFreshness;
-  },
+  input: { userId: string; workspaceId: string; childId: string },
 ): Promise<ChildAuthorization> {
   const { membership, workspace } = await authorizeWorkspace(tx, input);
   const child = await childrenRepository.findChildInWorkspace(tx, input.workspaceId, input.childId);

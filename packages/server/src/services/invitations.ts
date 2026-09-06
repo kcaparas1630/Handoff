@@ -22,6 +22,7 @@ import { computeInvitationLookupHash } from "../security/encryption/lib/invitati
 import { decryptInviteeEmail, encryptInviteeEmail } from "../security/profile-fields";
 import { canManageAnyChild, managesChild, resolveManagerScope } from "./grant-scope";
 import { authorizeInvitationAccess } from "./invitation-access";
+import { refreshMembershipIfStale } from "./memberships";
 import type { ServiceDeps } from "../types/runtime";
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -48,12 +49,10 @@ export async function createInvitation({
     });
   }
 
+  await refreshMembershipIfStale({ deps, userId: actorUserId, workspaceId });
+
   const clerkOrgId = await withTenantTransaction(deps.db, { workspaceId }, async (tx) => {
-    const actor = await authorizeWorkspace(tx, {
-      userId: actorUserId,
-      workspaceId,
-      freshness: { deps },
-    });
+    const actor = await authorizeWorkspace(tx, { userId: actorUserId, workspaceId });
     const scope = await resolveManagerScope(tx, {
       workspaceId,
       userId: actorUserId,
