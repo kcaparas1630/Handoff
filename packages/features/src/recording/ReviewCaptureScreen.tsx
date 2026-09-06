@@ -156,6 +156,17 @@ export function ReviewCaptureScreen({
             Check these before saving
           </Text>
 
+          {(draft?.notes ?? []).length === 0 ? null : (
+            <View className="gap-sm" testID="review-notes">
+              <Text className="text-sm font-semibold text-primary dark:text-primary-dark">
+                Things to check
+              </Text>
+              {(draft?.notes ?? []).map((note) => (
+                <StatusMessage key={note} tone="warning" message={note} />
+              ))}
+            </View>
+          )}
+
           {candidates.length === 0 ? (
             <StatusMessage
               tone="warning"

@@ -1,0 +1,152 @@
+# UNEXECUTED. This flow has never been run: milestone 3 had no device, simulator, Clerk
+# development instance, or provisioned Deepgram/Anthropic keys available. Treat it as a reviewed
+# script, not as passing evidence.
+#
+# Requirements before the first run:
+#   - com.handoff.parents installed on a real device. The recorder needs a working microphone and
+#     a granted permission; the simulator's silent input produces an empty transcript, which this
+#     flow deliberately does not accept as a pass.
+#   - A Clerk development instance. CAREGIVER_EMAIL must be a Clerk test address (`+clerk_test`),
+#     whose emailed code is the fixed test code in SIGN_IN_CODE. No real child or caregiver data
+#     belongs in this file.
+#   - An already-seeded workspace containing CHILD_NAME where the signed-in caregiver holds a
+#     contributor grant. `tests/e2e/onboarding-invitation.yaml` covers workspace setup.
+#   - One running API, one running worker (`pnpm dev:worker`), a disposable database, the private
+#     recording bucket from `pnpm storage:provision`, and DEEPGRAM_API_KEY / ANTHROPIC_API_KEY set
+#     for the worker only. The extracted values below are what a real transcription of SPOKEN_LINE
+#     should produce; a provider change can move them.
+#   - `maestro test tests/e2e/voice-handoff.yaml`.
+#
+# Every selector is a testID that exists in packages/features or packages/ui today, or the
+# accessible label of a choice chip. Draft cards carry a `draft-<uuid>` testID whose id is not
+# known in advance, so entries are matched by their rendered template text instead.
+#
+# The demo this covers is milestone 3's: say the sentence, review two drafts, correct the date,
+# save; close the app mid-processing; reopen and find the drafts waiting.
+
+appId: com.handoff.parents
+env:
+  CAREGIVER_EMAIL: "handoff.parent+clerk_test@example.com"
+  SIGN_IN_CODE: "424242"
+  CHILD_NAME: "Rowan"
+  SPOKEN_LINE: "Fed 60 ml at 2 am, and first word Dada"
+  FEED_AMOUNT: "60"
+  MILESTONE_WORD: "Dada"
+---
+# ── Sign in and open the child ───────────────────────────────────────────────────────
+- launchApp:
+    appId: "com.handoff.parents"
+    clearState: true
+    permissions:
+      microphone: allow
+
+- assertVisible:
+    id: "sign-in-email"
+- tapOn:
+    id: "sign-in-email"
+- inputText: "${CAREGIVER_EMAIL}"
+- tapOn:
+    id: "sign-in-send-code"
+- tapOn:
+    id: "sign-in-code"
+- inputText: "${SIGN_IN_CODE}"
+- tapOn:
+    id: "sign-in-verify"
+
+- assertVisible: "Your children"
+- tapOn: "${CHILD_NAME}"
+- assertVisible:
+    id: "care-dashboard"
+
+# ── Record the demo sentence ─────────────────────────────────────────────────────────
+# Recording is a labelled control with an example beside it, not an autoplaying prompt.
+- assertVisible:
+    id: "dashboard-record"
+- tapOn:
+    id: "dashboard-record"
+- assertVisible:
+    id: "record-screen"
+- assertVisible: "Record an update"
+# Typing stays available on the same screen; voice is never the only way in.
+- assertVisible:
+    id: "record-type-instead"
+
+- tapOn:
+    id: "record-start"
+# MANUAL STEP on the first run: say SPOKEN_LINE aloud now. Maestro cannot speak, so a repeatable
+# run needs audio injected into the device's microphone before this line.
+- assertVisible:
+    id: "record-stop"
+- tapOn:
+    id: "record-stop"
+
+# The local file exists before anything is shared, and the wording says exactly that.
+- assertVisible: "Saved on this phone. Nothing is shared yet."
+- assertVisible:
+    id: "review-capture"
+
+# ── Close the app while the upload and the worker are still running ──────────────────
+# The roadmap demo requires the drafts to survive leaving the app after the upload starts.
+- stopApp:
+    appId: "com.handoff.parents"
+- launchApp:
+    appId: "com.handoff.parents"
+- assertVisible:
+    id: "care-dashboard"
+
+# The dashboard offers the pending recording back rather than losing it.
+- assertVisible:
+    id: "dashboard-review-pending"
+- tapOn:
+    id: "dashboard-review-pending"
+- assertVisible:
+    id: "review-capture"
+
+# ── Two drafts arrive for review ─────────────────────────────────────────────────────
+- extendedWaitUntil:
+    visible: "Ready for review"
+    timeout: 60000
+- assertVisible: "Check these before saving"
+- assertVisible: "Fed ${FEED_AMOUNT} ml.*"
+- assertVisible: "Milestone.*${MILESTONE_WORD}.*"
+
+# The transcript stays inspectable without dominating the screen.
+- tapOn: "Show what was recorded"
+- assertVisible: "Hide what was recorded"
+- tapOn: "Hide what was recorded"
+
+# ── Correct the date the speaker never stated ────────────────────────────────────────
+# "at 2 am" carries no day, so the card asks instead of choosing one. Answering it is the
+# roadmap's "correct the date" step.
+- assertVisible: "Which day was.*"
+- assertVisible: "Which day?"
+- tapOn: "Yesterday .*"
+- assertVisible: "✓ Yesterday .*"
+
+# ── Save both entries ────────────────────────────────────────────────────────────────
+- assertVisible:
+    id: "review-save"
+- tapOn:
+    id: "review-save"
+
+- assertVisible:
+    id: "care-dashboard"
+# Both drafts published, and the corrected feed is the latest known care.
+- assertVisible: "Fed ${FEED_AMOUNT} ml.*"
+- assertVisible: "${MILESTONE_WORD}"
+
+# ── Reopening finds published entries, not a pending draft ───────────────────────────
+- stopApp:
+    appId: "com.handoff.parents"
+- launchApp:
+    appId: "com.handoff.parents"
+- assertVisible:
+    id: "care-dashboard"
+- assertNotVisible:
+    id: "dashboard-review-pending"
+- tapOn:
+    id: "dashboard-open-journal"
+- assertVisible:
+    id: "journal-screen"
+- assertVisible: "Fed ${FEED_AMOUNT} ml.*"
+- assertVisible: "${MILESTONE_WORD}"

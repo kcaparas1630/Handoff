@@ -9,6 +9,7 @@ import {
   withJobTransaction,
   withTenantTransaction,
 } from "../../packages/db/src/tenant-transaction";
+import { DROPPED_CANDIDATE_NOTE } from "../../packages/server/src/ai/lib/validate-extraction";
 import { ProviderError } from "../../packages/server/src/lib/provider-error";
 import { confirmCapture } from "../../packages/server/src/services/capture-confirmation";
 import { createCapture, getCapture } from "../../packages/server/src/services/captures";
@@ -189,6 +190,8 @@ describeIntegration("capture processing and confirmation", () => {
     expect(capture.draft?.candidates).toHaveLength(1);
     expect(capture.draft?.candidates[0]?.kind).toBe("feed");
     expect(capture.draft?.formattedText).toBe(fixture.transcript);
+    // The reviewer is told an entry went missing rather than being left to notice the gap.
+    expect(capture.draft?.notes).toContain(DROPPED_CANDIDATE_NOTE);
     jobs.extraction.script(fixture.transcript, output);
   });
 

@@ -63,6 +63,9 @@ export const captureDraftSchema = z.object({
   rawTranscript: z.string().nullable(),
   formattedText: z.string().nullable(),
   candidates: z.array(draftCandidateSchema),
+  // Reviewer caveats: the extractor's own notes plus one per candidate that could not be read.
+  // They carry no publishing authority. Defaulted so a draft stored before this field reads back.
+  notes: z.array(z.string().max(300)).max(5).default([]),
 });
 
 // Closed set of terminal reasons a capture can fail with. Producers pick one of these; the DTO

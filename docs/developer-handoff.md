@@ -52,6 +52,7 @@ Server/worker-only configuration:
 CLERK_SECRET_KEY
 CLERK_WEBHOOK_SIGNING_SECRET
 CLERK_GUARDIAN_ROLE_KEY
+CLERK_AUTHORIZED_PARTIES
 DATABASE_URL
 DATABASE_MIGRATION_URL
 DATABASE_JOB_DISPATCH_URL
@@ -69,9 +70,13 @@ PII_KEY_PROVIDER
 PII_KMS_KEY_ID
 AWS_REGION
 PII_DEV_WRAPPING_KEY_B64
+WORKER_CONCURRENCY
+WORKER_LEASE_SECONDS
 ```
 
 These are application-selected environment names. Map the Supabase storage secret to the supported server SDK credential for the provisioned project. Distinct database URLs represent restricted runtime, migration, and dispatcher capabilities. Validate required configuration at startup; do not include secret values in client bundles, example files, error responses, or logs.
+
+`CLERK_AUTHORIZED_PARTIES` is the comma-separated allowlist of origins a session token may be presented from; leaving it unset skips that check and is only appropriate in local development. `WORKER_CONCURRENCY` and `WORKER_LEASE_SECONDS` bound how many jobs one worker claims at a time and how long a claim survives a crash; both have defaults, so the worker starts without them.
 
 `PII_KEY_PROVIDER` selects managed KMS for production or the explicitly development-only wrapping adapter. `PII_KMS_KEY_ID` is a key reference, not key material. Prefer a scoped workload identity for AWS access. `PII_DEV_WRAPPING_KEY_B64` is only for local/synthetic tests and must be rejected in production; never commit its value.
 

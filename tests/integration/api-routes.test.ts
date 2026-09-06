@@ -6,9 +6,11 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as acceptInvitationRoute from "../../apps/api/src/app/accept-invitation+api";
 import * as bootstrapRoute from "../../apps/api/src/app/v1/bootstrap+api";
+import * as completeUploadRoute from "../../apps/api/src/app/v1/captures/[captureId]/complete+api";
 import * as confirmCaptureRoute from "../../apps/api/src/app/v1/captures/[captureId]/confirm+api";
 import * as captureRoute from "../../apps/api/src/app/v1/captures/[captureId]/index+api";
 import * as capturesRoute from "../../apps/api/src/app/v1/captures/index+api";
+import * as retryCaptureRoute from "../../apps/api/src/app/v1/captures/[captureId]/retry+api";
 import * as careRoute from "../../apps/api/src/app/v1/children/[childId]/care+api";
 import * as caregiversRoute from "../../apps/api/src/app/v1/children/[childId]/caregivers+api";
 import * as childEventsRoute from "../../apps/api/src/app/v1/children/[childId]/events+api";
@@ -28,6 +30,7 @@ import {
   acknowledgeBriefResponseSchema,
   bootstrapResponseSchema,
   captureDtoSchema,
+  completeUploadResponseSchema,
   careListResponseSchema,
   careSessionDtoSchema,
   childDtoSchema,
@@ -37,6 +40,7 @@ import {
   eventsPageSchema,
   handoffBriefDtoSchema,
   invitationDtoSchema,
+  retryCaptureResponseSchema,
   overviewDtoSchema,
   workspaceDtoSchema,
 } from "../../packages/contracts/src/index";
@@ -46,11 +50,18 @@ import { withTenantTransaction } from "../../packages/db/src/tenant-transaction"
 import { ApiHttpError } from "../../packages/server/src/http/errors";
 import { createRequestDeps } from "../../packages/server/src/runtime";
 import { createChild } from "../../packages/server/src/services/children";
+import { createJobRunner } from "../../packages/server/src/jobs/runner";
+import { processCapture } from "../../packages/server/src/jobs/process-capture";
+import { ProviderError } from "../../packages/server/src/lib/provider-error";
 import { createDataKeyService } from "../../packages/server/src/security/encryption/data-keys";
 import { createDevelopmentKeyWrapper } from "../../packages/server/src/security/encryption/development-key-wrapper";
+import { createFakeExtraction } from "./support/fake-extraction";
+import { createFakeObjectStorage } from "./support/fake-object-storage";
+import { createFakeTranscription } from "./support/fake-transcription";
 import type { OverviewDto } from "../../packages/contracts/src/index";
 import type { DbClient } from "../../packages/db/src/client";
-import type { ServerRuntime } from "../../packages/server/src/types/runtime";
+import type { ServerRuntime, WorkerRuntime } from "../../packages/server/src/types/runtime";
+import type { FakeObjectStorage } from "./support/fake-object-storage";
 import type { FakeClerkGateway } from "./support/fake-clerk-gateway";
 import { createFakeClerkGateway } from "./support/fake-clerk-gateway";
 import type { TestDatabase } from "./support/test-database";
@@ -105,6 +116,10 @@ describeIntegration("v1 API routes", () => {
   let api: DbClient;
   let clerk: FakeClerkGateway;
   let runtime: ServerRuntime;
+  // The recording routes need the object store and the queue credential the API really uses.
+  let storage: FakeObjectStorage;
+  let dispatcher: DbClient;
+  let audioCaptureId: string;
 
   let ownerUserId: string;
   let recipientUserId: string;
@@ -275,6 +290,8 @@ describeIntegration("v1 API routes", () => {
     api = createDbClient({ url: database.apiUrl, maxConnections: 10 });
     clerk = createFakeClerkGateway();
     const keyWrapper = createDevelopmentKeyWrapper(randomBytes(32).toString("base64"));
+    storage = createFakeObjectStorage();
+    dispatcher = createDbClient({ url: database.dispatcherUrl, maxConnections: 4 });
     runtime = {
       db: api.db,
       keys: createDataKeyService({ store: createDataKeyStore(api.db), wrapper: keyWrapper }),
@@ -282,8 +299,8 @@ describeIntegration("v1 API routes", () => {
       clerk,
       guardianRoleKey: "org:guardian",
       invitationRedirectUrl: `${ORIGIN}/accept-invitation`,
-      storage: null,
-      jobsDb: null,
+      storage,
+      jobsDb: dispatcher.db,
       now: () => new Date(),
       close: () => api.close(),
     };
@@ -328,6 +345,7 @@ describeIntegration("v1 API routes", () => {
   }, 60_000);
 
   afterAll(async () => {
+    await dispatcher?.close();
     await api?.close();
     await database?.drop();
   });
@@ -887,5 +905,193 @@ describeIntegration("v1 API routes", () => {
     ]);
     // A removed entry is no longer recorded care, so it stops being the latest known fact.
     expect((await readOverview(RECIPIENT_TOKEN)).latest.feed).toBeNull();
+  });
+  // ── Recording routes: allocate, upload, complete, and requeue ────────────────────────
+  const AUDIO_BYTES = 4_096;
+
+  function audioCaptureBody(): string {
+    return JSON.stringify({
+      childId,
+      clientCaptureId: randomUUID(),
+      inputKind: "audio",
+      capturedAt: new Date().toISOString(),
+      timezone: "America/Vancouver",
+      locale: "en-CA",
+      audio: {
+        declaredMime: "audio/m4a",
+        declaredSizeBytes: AUDIO_BYTES,
+        declaredDurationMs: 5_000,
+      },
+    });
+  }
+
+  async function readCapture(token: string, id: string): Promise<Record<string, unknown>> {
+    const response = await captureRoute.GET(
+      jsonRequest("GET", `/v1/captures/${id}`, { headers: authorized(token) }),
+      { captureId: id },
+    );
+    expect(response.status).toBe(200);
+    return readBody(response);
+  }
+
+  function completeUploadRequest(token: string, id: string, key: string): Promise<Response> {
+    return completeUploadRoute.POST(
+      jsonRequest("POST", `/v1/captures/${id}/complete`, {
+        headers: authorized(token, key),
+        body: JSON.stringify({ sizeBytes: AUDIO_BYTES, durationMs: 4_200 }),
+      }),
+      { captureId: id },
+    );
+  }
+
+  function retryRequest(token: string, id: string): Promise<Response> {
+    return retryCaptureRoute.POST(
+      jsonRequest("POST", `/v1/captures/${id}/retry`, { headers: authorized(token, randomUUID()) }),
+      { captureId: id },
+    );
+  }
+
+  async function countProcessJobs(id: string): Promise<number> {
+    return withAdminSession(async (session) => {
+      const rows = await session<{ count: number }[]>`
+        select count(*)::int as count from handoff.jobs
+        where kind = 'process_capture' and capture_id = ${id}
+      `;
+      return rows[0]?.count ?? 0;
+    });
+  }
+
+  it("allocates an audio capture with one upload authorization", async () => {
+    const response = await capturesRoute.POST(
+      jsonRequest("POST", "/v1/captures", {
+        headers: authorized(OWNER_TOKEN, randomUUID()),
+        body: audioCaptureBody(),
+      }),
+    );
+    expect(response.status).toBe(201);
+    const capture = captureDtoSchema.parse(await readBody(response));
+    expect(capture.status).toBe("awaiting_upload");
+    expect(capture.upload?.method).toBe("PUT");
+    expect(capture.audioAsset?.status).toBe("pending_upload");
+    // Nothing is queued until the stored object has been verified.
+    expect(await countProcessJobs(capture.id)).toBe(0);
+    audioCaptureId = capture.id;
+  });
+
+  it("re-signs the upload for the author while the capture still awaits it", async () => {
+    const signedBefore = storage.authorized.length;
+    const first = captureDtoSchema.parse(await readCapture(OWNER_TOKEN, audioCaptureId));
+    const second = captureDtoSchema.parse(await readCapture(OWNER_TOKEN, audioCaptureId));
+    expect(first.upload).not.toBeNull();
+    // A signed URL is never stored or replayed, so each read authorizes a fresh one.
+    expect(storage.authorized).toHaveLength(signedBefore + 2);
+    expect(new Date(second.upload?.expiresAt ?? 0).getTime()).toBeGreaterThanOrEqual(
+      new Date(first.upload?.expiresAt ?? 0).getTime(),
+    );
+    expect(new Date(second.upload?.expiresAt ?? 0).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("refuses a completion before the object exists and leaves the capture awaiting upload", async () => {
+    const response = await completeUploadRequest(OWNER_TOKEN, audioCaptureId, randomUUID());
+    expect(response.status).toBe(422);
+    expect((await readBody(response)).code).toBe("validation_failed");
+
+    const reread = captureDtoSchema.parse(await readCapture(OWNER_TOKEN, audioCaptureId));
+    expect(reread.status).toBe("awaiting_upload");
+    expect(await countProcessJobs(audioCaptureId)).toBe(0);
+  });
+
+  it("hides the recording from a non-author who tries to complete it", async () => {
+    const response = await completeUploadRequest(RECIPIENT_TOKEN, audioCaptureId, randomUUID());
+    expect(response.status).toBe(404);
+    expect((await readBody(response)).code).toBe("not_found");
+  });
+
+  it("queues exactly one job on completion and replays a repeated one", async () => {
+    const before = captureDtoSchema.parse(await readCapture(OWNER_TOKEN, audioCaptureId));
+    const objectKey = before.audioAsset?.id ?? "";
+    expect(objectKey).not.toBe("");
+    // Stands in for the client's direct PUT to the signed URL.
+    storage.put(
+      `${workspaceId}/${childId}/${audioCaptureId}/${objectKey}.m4a`,
+      Buffer.alloc(AUDIO_BYTES, 1),
+    );
+
+    const key = randomUUID();
+    const first = await completeUploadRequest(OWNER_TOKEN, audioCaptureId, key);
+    expect(first.status).toBe(200);
+    const completed = completeUploadResponseSchema.parse(await readBody(first));
+    expect(completed.capture.status).toBe("queued");
+    expect(completed.asset.status).toBe("uploaded");
+    expect(await countProcessJobs(audioCaptureId)).toBe(1);
+
+    const replay = await completeUploadRequest(OWNER_TOKEN, audioCaptureId, key);
+    expect(replay.status).toBe(200);
+    expect(completeUploadResponseSchema.parse(await readBody(replay)).capture.status).toBe(
+      "queued",
+    );
+    expect(await countProcessJobs(audioCaptureId)).toBe(1);
+  });
+
+  it("queues a typed capture at creation with one job and no upload", async () => {
+    const response = await capturesRoute.POST(
+      jsonRequest("POST", "/v1/captures", {
+        headers: authorized(OWNER_TOKEN, randomUUID()),
+        body: JSON.stringify({
+          childId,
+          clientCaptureId: randomUUID(),
+          inputKind: "text",
+          capturedAt: new Date().toISOString(),
+          timezone: "America/Vancouver",
+          locale: "en-CA",
+          text: "Fed him 60 ml from a bottle at 2 am.",
+        }),
+      }),
+    );
+    expect(response.status).toBe(201);
+    const capture = captureDtoSchema.parse(await readBody(response));
+    expect(capture.status).toBe("queued");
+    expect(capture.upload ?? null).toBeNull();
+    expect(await countProcessJobs(capture.id)).toBe(1);
+  });
+
+  it("refuses to retry a capture that has not failed", async () => {
+    const response = await retryRequest(OWNER_TOKEN, audioCaptureId);
+    expect(response.status).toBe(409);
+    expect((await readBody(response)).code).toBe("conflict");
+  });
+
+  it("requeues the capture once the worker has marked it failed", async () => {
+    // A terminal transcription failure is the shortest route to a visibly failed recording.
+    const transcription = createFakeTranscription();
+    transcription.failWith(
+      new ProviderError({ provider: "deepgram", code: "invalid_input", retryable: false }),
+    );
+    const worker: WorkerRuntime = {
+      ...runtime,
+      storage,
+      jobsDb: dispatcher.db,
+      transcription,
+      extraction: createFakeExtraction(),
+    };
+    const runner = createJobRunner({
+      runtime: worker,
+      handlers: { process_capture: processCapture },
+      concurrency: 1,
+      leaseMs: 30_000,
+    });
+    while ((await runner.runOnce()) > 0) {
+      // Drain every queued recording so the retried one is genuinely in its failed state.
+    }
+    expect(captureDtoSchema.parse(await readCapture(OWNER_TOKEN, audioCaptureId)).status).toBe(
+      "failed",
+    );
+
+    const response = await retryRequest(OWNER_TOKEN, audioCaptureId);
+    expect(response.status).toBe(200);
+    const retried = retryCaptureResponseSchema.parse(await readBody(response));
+    expect(retried.capture.status).toBe("queued");
+    // Reusing the existing job keeps the earlier checkpoints rather than paying for them again.
+    expect(await countProcessJobs(audioCaptureId)).toBe(1);
   });
 });

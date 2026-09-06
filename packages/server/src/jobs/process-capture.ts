@@ -216,24 +216,14 @@ async function extractAndCommit(
     newId: randomUUID,
   });
 
-  // The stored draft has no field for reviewer caveats yet, so a dropped entry is counted in the
-  // log rather than shown. Surfacing the text needs a `notes` field on the capture draft contract.
-  if (built.notes.length > 0) {
-    console.info(
-      JSON.stringify({
-        event: "job_draft_notes",
-        jobId: context.job.id,
-        notes: built.notes.length,
-      }),
-    );
-  }
-
   const committed = await writeDraft(runtime, work, {
     draft: {
       schemaVersion: DRAFT_SCHEMA_VERSION,
       rawTranscript: transcript,
       formattedText: extracted.output.formattedText,
       candidates: built.candidates,
+      // The reviewer sees why an entry is missing; the caveat text never publishes anything.
+      notes: built.notes,
     },
     status: "needs_review",
     promptVersion: extracted.provenance.promptVersion,

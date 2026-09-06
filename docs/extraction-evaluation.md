@@ -18,21 +18,37 @@ fixtures is scored as if the extractor should have inferred it.
 
 ## Running it
 
-`scripts/evaluate-extraction.ts` is written in milestone 3 task 4 and does not exist yet. Once it
-does, it runs in two modes over the same cases:
+`scripts/evaluate-extraction.ts` implements this document; the scoring rules themselves live in
+`scripts/lib/extraction-scoring.ts` as pure functions.
 
 ```bash
-# Transcript mode: feed each case's `transcript` straight to the extractor.
-pnpm tsx scripts/evaluate-extraction.ts --mode transcript
+# Corpus only. No provider is called and nothing is scored.
+pnpm eval:extraction -- --dry-run
 
-# Audio mode: transcribe each manifest clip first, then extract from that transcript.
-pnpm tsx scripts/evaluate-extraction.ts --mode audio
+# Transcript mode: feed each case's `transcript` straight to the extractor.
+ANTHROPIC_API_KEY=... pnpm eval:extraction -- --out docs/extraction-results/run.json
+
+# Adds audio mode: transcribe each manifest clip, then extract from that real transcript.
+ANTHROPIC_API_KEY=... DEEPGRAM_API_KEY=... pnpm eval:extraction -- --audio tests/fixtures/audio/manifest.json
 ```
 
-Both modes call real providers, so they need the API/worker environment configuration and cost
-budget, and they are not part of `pnpm test:unit`. `pnpm test:unit` only validates that every
-fixture line still parses against `expectedCandidateSchema`, which keeps a malformed case from
-reaching a scoring run.
+| Flag | Meaning |
+| --- | --- |
+| `--dry-run` | Print the case count and per-tag coverage, then exit. Calls no provider and prints no accuracy number |
+| `--cases <path>` | The labelled corpus; defaults to `tests/fixtures/extraction-cases.jsonl` |
+| `--audio <path>` | Runs audio mode over a manifest as well. Omitted, only transcript mode runs |
+| `--out <path>` | The JSON run artifact; defaults to `docs/extraction-results/<timestamp>.json`. The folder is created |
+| `--concurrency <n>` | Cases in flight per mode, 1–8; defaults to 2 |
+
+Transcript mode always runs; audio mode is added by `--audio` and reported separately. Both call
+real providers, so they need `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL_ID` (and `DEEPGRAM_API_KEY`/
+`TRANSCRIPTION_MODEL_ID` for audio) and a cost budget, and they are not part of `pnpm test:unit`.
+A missing `ANTHROPIC_API_KEY` behaves like `--dry-run` rather than failing part way through a run.
+`pnpm test:unit` only validates that every fixture line still parses against
+`expectedCandidateSchema`, which keeps a malformed case from reaching a scoring run.
+
+The run prints case ids and field-level mismatches. It never prints a transcript, a clip, or a
+provider request body, and the JSON artifact holds none of them either.
 
 ### Audio versus transcript
 
@@ -122,3 +138,23 @@ A run produces, for each mode:
 
 Store the report as a run artifact with its date and configuration. Do not paste unverified numbers
 into this file or into the roadmap.
+
+## Status
+
+`scripts/evaluate-extraction.ts` exists and has been run **in dry-run mode only**: 56 labelled
+cases and 20 audio clips loaded, tag coverage printed, no provider called.
+
+No live run has happened. Nobody has held an Anthropic or Deepgram key for this repository, so
+every measured gate in the roadmap's milestone 3 acceptance list remains **unmeasured**:
+
+- the >=95% exact accuracy across critical fields,
+- the zero-invented-quantity and zero-invented-completed-care counts,
+- the 100%-blocked figure for malformed or semantically invalid output,
+- the audio-versus-transcript separation and the word error rate,
+- the p50/p95 stage latencies and the stop-to-review target,
+- the per-recording ASR + LLM cost against the US$0.02 budget.
+
+The script computes all of them, but a computed formula is not a result. The Deepgram rate the
+cost figures use is a named placeholder constant, not a contracted price; replace it before any
+cost number is quoted. Do not record a number in this file, in the roadmap, or in a review until
+someone runs the script with real keys and attaches the artifact it writes.

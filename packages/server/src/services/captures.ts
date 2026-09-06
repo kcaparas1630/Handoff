@@ -267,6 +267,7 @@ function buildDraft(input: CreateCaptureRequest): CaptureDraft {
       rawTranscript: input.inputKind === "text" ? (input.text ?? null) : null,
       formattedText: null,
       candidates: [],
+      notes: [],
     };
   }
   return {
@@ -279,6 +280,8 @@ function buildDraft(input: CreateCaptureRequest): CaptureDraft {
       sourceStart: null,
       sourceEnd: null,
     })),
+    // Nothing was extracted, so there is nothing for the reviewer to double-check.
+    notes: [],
   };
 }
 
@@ -386,6 +389,8 @@ export async function updateCaptureDraft({
         rawTranscript: stored?.rawTranscript ?? null,
         formattedText: stored?.formattedText ?? null,
         candidates: input.candidates,
+        // The caveats describe the extraction, not the edit, so an edit keeps them.
+        notes: stored?.notes ?? [],
       },
     });
     const row = await capturesRepository.updateCaptureDraft(scoped, {
