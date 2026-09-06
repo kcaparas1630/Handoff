@@ -13,7 +13,7 @@ Architecture package, prepared September 5, 2026:
 - [PII encryption](docs/pii-encryption.md): encrypt before Postgres writes, authorize before server decryption, external key management, rotation, and recovery.
 - [Agent conventions](AGENTS.md): repository instructions, also available through the `CLAUDE.md` symlink; [research rationale](docs/conventions-rationale.md).
 
-Milestone 1 (shared foundation, identity, child onboarding, invitations) is implemented; see the [milestone 1 report](docs/milestone-1-report.md) for what was verified and what remains. Milestones 2–5 are still blueprint. Performance and product metrics in the roadmap are proposed acceptance targets, not measured results.
+Milestones 1 and 2 are implemented; see the [milestone 1 report](docs/milestone-1-report.md) and [milestone 2 report](docs/milestone-2-report.md) for what was verified and what remains. Milestones 3–5 are still blueprint. Performance and product metrics in the roadmap are proposed acceptance targets, not measured results.
 
 Local development: `docker compose up -d`, copy `.env.example` to `.env` and fill it, then `DATABASE_MIGRATION_URL=… pnpm db:migrate`, `pnpm dev:api`, and `pnpm dev:parents` or `pnpm dev:daycare`.
 
