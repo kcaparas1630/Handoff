@@ -8,11 +8,14 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
     "@aws-sdk/client-kms": "^3.1127.0",
     "@clerk/backend": "^3.17.1",
+    "@deepgram/sdk": "^5.10.0",
     "@handoff/contracts": "workspace:*",
     "@handoff/db": "workspace:*",
     "@handoff/domain": "workspace:*",
+    "@supabase/supabase-js": "^2.115.0",
     "zod": "^4.5.4"
   }
 }
