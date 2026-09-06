@@ -1,0 +1,307 @@
+import { and, asc, eq, inArray, isNotNull, lt, lte, ne, sql } from "drizzle-orm";
+import { captures, mediaAssets } from "../schema";
+import type { HandoffTransaction } from "../types/database";
+import type {
+  MediaAssetLookup,
+  MediaAssetRow,
+  MediaUploadResult,
+  NewMediaAsset,
+} from "../types/media";
+
+// Media rows move pending_upload -> uploaded -> ready, with rejected, deleting, and deleted
+// branches. Every transition names the status it is coming from, so a replayed worker attempt
+// matches no row and returns null instead of moving the same asset twice.
+
+/** Call inside the same transaction as reserveStorageBytes: the row records what was reserved. */
+export async function insertMediaAsset(
+  tx: HandoffTransaction,
+  input: NewMediaAsset,
+): Promise<MediaAssetRow> {
+  const [row] = await tx
+    .insert(mediaAssets)
+    .values({ ...input, status: "pending_upload" })
+    .returning();
+  if (!row) throw new Error("media asset insert returned no row");
+  return row;
+}
+
+export async function findMediaAssetInWorkspace(
+  tx: HandoffTransaction,
+  workspaceId: string,
+  assetId: string,
+): Promise<MediaAssetRow | null> {
+  const [row] = await tx
+    .select()
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.workspaceId, workspaceId), eq(mediaAssets.id, assetId)))
+    .limit(1);
+  return row ?? null;
+}
+
+/** Reconciles an object the storage provider reports against the allocation that created it. */
+export async function findMediaAssetByObjectKey(
+  tx: HandoffTransaction,
+  lookup: MediaAssetLookup,
+): Promise<MediaAssetRow | null> {
+  const [row] = await tx
+    .select()
+    .from(mediaAssets)
+    .where(
+      and(
+        eq(mediaAssets.storageProvider, lookup.storageProvider),
+        eq(mediaAssets.bucket, lookup.bucket),
+        eq(mediaAssets.objectKey, lookup.objectKey),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function listAssetsForCapture(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; childId: string; captureId: string },
+): Promise<MediaAssetRow[]> {
+  return tx
+    .select()
+    .from(mediaAssets)
+    .where(
+      and(
+        eq(mediaAssets.workspaceId, input.workspaceId),
+        eq(mediaAssets.childId, input.childId),
+        eq(mediaAssets.captureId, input.captureId),
+      ),
+    )
+    .orderBy(asc(mediaAssets.createdAt), asc(mediaAssets.id));
+}
+
+/** Enforces the per-capture attachment limit before another allocation is issued. */
+export async function countAssetsForCapture(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; childId: string; captureId: string },
+): Promise<number> {
+  const [row] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(mediaAssets)
+    .where(
+      and(
+        eq(mediaAssets.workspaceId, input.workspaceId),
+        eq(mediaAssets.childId, input.childId),
+        eq(mediaAssets.captureId, input.captureId),
+        ne(mediaAssets.status, "deleted"),
+      ),
+    );
+  return row?.count ?? 0;
+}
+
+/**
+ * Records the completion callback. The version predicate rejects a stale caller that reports a
+ * size for an allocation another request already completed.
+ */
+export async function markAssetUploaded(
+  tx: HandoffTransaction,
+  input: MediaUploadResult,
+): Promise<MediaAssetRow | null> {
+  const [row] = await tx
+    .update(mediaAssets)
+    .set({
+      status: "uploaded",
+      sizeBytes: input.sizeBytes,
+      checksum: input.checksum ?? null,
+      durationMs: input.durationMs ?? null,
+      updatedAt: sql`now()`,
+      version: sql`${mediaAssets.version} + 1`,
+    })
+    .where(
+      and(
+        eq(mediaAssets.workspaceId, input.workspaceId),
+        eq(mediaAssets.id, input.assetId),
+        eq(mediaAssets.status, "pending_upload"),
+        eq(mediaAssets.version, input.expectedVersion),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
+/**
+ * Publishes an asset after byte inspection. The cleanup_state predicate is what makes this row
+ * the licence to settle the reservation: it can only be crossed once.
+ */
+export async function markAssetReady(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; assetId: string; verifiedMime: string },
+): Promise<MediaAssetRow | null> {
+  const [row] = await tx
+    .update(mediaAssets)
+    .set({
+      status: "ready",
+      verifiedMime: input.verifiedMime,
+      cleanupState: "quota_released",
+      updatedAt: sql`now()`,
+      version: sql`${mediaAssets.version} + 1`,
+    })
+    .where(
+      and(
+        eq(mediaAssets.workspaceId, input.workspaceId),
+        eq(mediaAssets.id, input.assetId),
+        eq(mediaAssets.status, "uploaded"),
+        eq(mediaAssets.cleanupState, "none"),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
+/** Validation failure. The object still exists; cleanup deletes it and releases the reservation. */
+export async function markAssetRejected(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; assetId: string },
+): Promise<MediaAssetRow | null> {
+  const [row] = await tx
+    .update(mediaAssets)
+    .set({
+      status: "rejected",
+      updatedAt: sql`now()`,
+      version: sql`${mediaAssets.version} + 1`,
+    })
+    .where(
+      and(
+        eq(mediaAssets.workspaceId, input.workspaceId),
+        eq(mediaAssets.id, input.assetId),
+        inArray(mediaAssets.status, ["pending_upload", "uploaded"]),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
+/** Claims an asset for object deletion, so two cleanup attempts do not both call the provider. */
+export async function markAssetDeleting(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; assetId: string },
+): Promise<MediaAssetRow | null> {
+  const [row] = await tx
+    .update(mediaAssets)
+    .set({
+      status: "deleting",
+      updatedAt: sql`now()`,
+      version: sql`${mediaAssets.version} + 1`,
+    })
+    .where(
+      and(
+        eq(mediaAssets.workspaceId, input.workspaceId),
+        eq(mediaAssets.id, input.assetId),
+        inArray(mediaAssets.status, ["pending_upload", "uploaded", "ready", "rejected"]),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
+/**
+ * Run after the storage object is gone. The status predicate is the replay guard; cleanup_state
+ * keeps whichever marker is further along, so recording the object deletion cannot erase the
+ * record that this asset's reservation already left storage_reserved_bytes.
+ */
+export async function markAssetDeleted(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; assetId: string },
+): Promise<MediaAssetRow | null> {
+  const [row] = await tx
+    .update(mediaAssets)
+    .set({
+      status: "deleted",
+      cleanupState: sql`case when ${mediaAssets.cleanupState} = 'none' then 'object_deleted' else ${mediaAssets.cleanupState} end`,
+      updatedAt: sql`now()`,
+      version: sql`${mediaAssets.version} + 1`,
+    })
+    .where(
+      and(
+        eq(mediaAssets.workspaceId, input.workspaceId),
+        eq(mediaAssets.id, input.assetId),
+        eq(mediaAssets.status, "deleting"),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
+/**
+ * The licence to call releaseStorageBytes, in the same transaction. A second attempt matches no
+ * row and returns null, so an interrupted cleanup that runs again cannot decrement twice.
+ */
+export async function markAssetQuotaReleased(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; assetId: string },
+): Promise<MediaAssetRow | null> {
+  const [row] = await tx
+    .update(mediaAssets)
+    .set({
+      cleanupState: "quota_released",
+      updatedAt: sql`now()`,
+      version: sql`${mediaAssets.version} + 1`,
+    })
+    .where(
+      and(
+        eq(mediaAssets.workspaceId, input.workspaceId),
+        eq(mediaAssets.id, input.assetId),
+        ne(mediaAssets.cleanupState, "quota_released"),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
+/**
+ * Abandoned uploads whose token has expired. Rows are tenant filtered by row-level security when
+ * this runs as the API role; a cross-workspace sweep belongs to the maintenance capability.
+ */
+export async function listExpiredPendingAssets(
+  tx: HandoffTransaction,
+  now: Date,
+  limit: number,
+): Promise<MediaAssetRow[]> {
+  return tx
+    .select()
+    .from(mediaAssets)
+    .where(
+      and(
+        eq(mediaAssets.status, "pending_upload"),
+        isNotNull(mediaAssets.expiresAt),
+        lte(mediaAssets.expiresAt, now),
+      ),
+    )
+    .orderBy(asc(mediaAssets.expiresAt), asc(mediaAssets.id))
+    .limit(limit);
+}
+
+/** Raw audio is source material: it is deleted a fixed interval after its capture is confirmed. */
+export async function listAudioForCleanup(
+  tx: HandoffTransaction,
+  confirmedBefore: Date,
+  limit: number,
+): Promise<MediaAssetRow[]> {
+  const rows = await tx
+    .select({ asset: mediaAssets })
+    .from(mediaAssets)
+    .innerJoin(
+      captures,
+      and(
+        eq(captures.workspaceId, mediaAssets.workspaceId),
+        eq(captures.childId, mediaAssets.childId),
+        eq(captures.id, mediaAssets.captureId),
+      ),
+    )
+    .where(
+      and(
+        eq(mediaAssets.kind, "audio"),
+        inArray(mediaAssets.status, ["uploaded", "ready"]),
+        eq(captures.status, "confirmed"),
+        isNotNull(captures.confirmedAt),
+        lt(captures.confirmedAt, confirmedBefore),
+      ),
+    )
+    .orderBy(asc(captures.confirmedAt), asc(mediaAssets.id))
+    .limit(limit);
+  return rows.map((row) => row.asset);
+}

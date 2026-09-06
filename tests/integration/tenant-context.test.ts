@@ -104,7 +104,7 @@ describeIntegration("tenant context", () => {
       const before = await session`select count(*)::int as count from drizzle.__drizzle_migrations`;
       await runMigrations(database.adminUrl);
       const after = await session`select count(*)::int as count from drizzle.__drizzle_migrations`;
-      expect(before[0]?.count).toBe(4);
+      expect(before[0]?.count).toBe(6);
       expect(after[0]?.count).toBe(before[0]?.count);
     } finally {
       await session.end();

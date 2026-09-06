@@ -34,3 +34,20 @@ export type RevisionOperation = "created" | "corrected" | "deleted" | "media_upd
 export type CareEndReason = "user_ended" | "membership_revoked" | "child_archived";
 
 export type BriefStatus = "ready" | "invalidated" | "redacted";
+
+export type MediaKind = "audio" | "image" | "video";
+
+export type MediaStatus =
+  "pending_upload" | "uploaded" | "ready" | "rejected" | "deleting" | "deleted";
+
+export type MediaCleanupState = "none" | "object_deleted" | "quota_released";
+
+export type JobKind =
+  | "process_capture"
+  | "validate_media"
+  | "reconcile_clerk"
+  | "cleanup_audio"
+  | "purge_child"
+  | "purge_workspace";
+
+export type JobStatus = "queued" | "leased" | "succeeded" | "failed" | "cancelled";

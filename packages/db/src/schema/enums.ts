@@ -110,3 +110,39 @@ export const careEndReason = handoffSchema.enum("care_end_reason", [
 ]);
 
 export const briefStatus = handoffSchema.enum("brief_status", ["ready", "invalidated", "redacted"]);
+
+export const mediaKind = handoffSchema.enum("media_kind", ["audio", "image", "video"]);
+
+export const mediaStatus = handoffSchema.enum("media_status", [
+  "pending_upload",
+  "uploaded",
+  "ready",
+  "rejected",
+  "deleting",
+  "deleted",
+]);
+
+// Which one-time side effects an asset's reservation has already had, so a retried cleanup or a
+// replayed validation cannot move the same bytes twice.
+export const mediaCleanupState = handoffSchema.enum("media_cleanup_state", [
+  "none",
+  "object_deleted",
+  "quota_released",
+]);
+
+export const jobKind = handoffSchema.enum("job_kind", [
+  "process_capture",
+  "validate_media",
+  "reconcile_clerk",
+  "cleanup_audio",
+  "purge_child",
+  "purge_workspace",
+]);
+
+export const jobStatus = handoffSchema.enum("job_status", [
+  "queued",
+  "leased",
+  "succeeded",
+  "failed",
+  "cancelled",
+]);

@@ -5,6 +5,7 @@ export type { DbClient, DbClientOptions } from "./client";
 export {
   setIdentityContext,
   withIdentityTransaction,
+  withJobTransaction,
   withTenantTransaction,
 } from "./tenant-transaction";
 export type { IdentityContext, IsolationLevel, TenantContext } from "./tenant-transaction";
@@ -21,6 +22,9 @@ export * as eventsRepository from "./repositories/events";
 export * as careRepository from "./repositories/care";
 export * as handoffsRepository from "./repositories/handoffs";
 export * as overviewRepository from "./repositories/overview";
+export * as mediaRepository from "./repositories/media";
+export * as storageQuotaRepository from "./repositories/storage-quota";
+export * as jobsRepository from "./repositories/jobs";
 export { createDataKeyStore } from "./repositories/data-keys";
 
 export type { HandoffDatabase, HandoffTransaction } from "./types/database";
@@ -44,6 +48,11 @@ export type {
   EventKind,
   EventStatus,
   InvitationStatus,
+  JobKind,
+  JobStatus,
+  MediaCleanupState,
+  MediaKind,
+  MediaStatus,
   MembershipStatus,
   RevisionOperation,
   TimePrecision,
@@ -103,3 +112,18 @@ export type {
   StartCareSession,
   StartedCareSession,
 } from "./types/care";
+export type {
+  MediaAssetLookup,
+  MediaAssetRow,
+  MediaUploadResult,
+  NewMediaAsset,
+  WorkspaceStorageRow,
+} from "./types/media";
+export type {
+  ClaimJobInput,
+  EnqueueJobInput,
+  EnqueueJobResult,
+  JobFailure,
+  JobRow,
+  LeasedJobWrite,
+} from "./types/jobs";

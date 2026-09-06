@@ -15,6 +15,11 @@ import type { HandoffDatabase } from "../../../packages/db/src/types/database";
 // These credentials only ever address the disposable local instance in docker-compose.yml.
 const apiRoleName = "handoff_api_test";
 const apiRolePassword = "handoff_api_test";
+// Separate login role for the queue tests. It must not also inherit handoff_api: policies are
+// permissive, so a role holding both would read every job through the dispatcher policy and the
+// tenant restriction on the API credential would be untestable.
+const dispatcherRoleName = "handoff_dispatcher_test";
+const dispatcherRolePassword = "handoff_dispatcher_test";
 
 export const missingDatabaseUrlMessage =
   "DATABASE_URL is not set. Point it at a disposable Postgres instance with permission to " +
@@ -27,6 +32,8 @@ export interface TestDatabase {
   adminUrl: string;
   /** Restricted runtime role. Subject to grants and tenant policies. */
   apiUrl: string;
+  /** Queue credential. Reaches every job row and no other table. */
+  dispatcherUrl: string;
   drop: () => Promise<void>;
 }
 
@@ -72,8 +79,16 @@ export async function createTestDatabase(): Promise<TestDatabase> {
         end if;
       end $$`);
     await admin.unsafe(`grant handoff_api to ${apiRoleName}`);
-    // Lets a non-superuser test user reach the restricted role through SET ROLE.
+    await admin.unsafe(`do $$
+      begin
+        if not exists (select 1 from pg_roles where rolname = '${dispatcherRoleName}') then
+          create role ${dispatcherRoleName} login password '${dispatcherRolePassword}';
+        end if;
+      end $$`);
+    await admin.unsafe(`grant handoff_dispatcher to ${dispatcherRoleName}`);
+    // Lets a non-superuser test user reach the restricted roles through SET ROLE.
     await admin.unsafe(`grant handoff_api to current_user`);
+    await admin.unsafe(`grant handoff_dispatcher to current_user`);
   } finally {
     await admin.end();
   }
@@ -82,6 +97,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     name,
     adminUrl,
     apiUrl: withCredentials(adminUrl, apiRoleName, apiRolePassword),
+    dispatcherUrl: withCredentials(adminUrl, dispatcherRoleName, dispatcherRolePassword),
     drop: async () => {
       const dropper = postgres(rootUrl, { max: 1, prepare: false, onnotice: () => {} });
       try {
@@ -124,7 +140,11 @@ export interface SeededTenant {
  * One workspace with an owner and a child, the smallest fixture a journal or care test needs.
  * Labels only have to be unique inside a test file; they become the synthetic Clerk ids.
  */
-export async function seedTenant(db: HandoffDatabase, label: string): Promise<SeededTenant> {
+export async function seedTenant(
+  db: HandoffDatabase,
+  label: string,
+  options: { storageBudgetBytes?: number } = {},
+): Promise<SeededTenant> {
   const workspaceId = randomUUID();
   const userId = await seedUser(db, label);
   await withTenantTransaction(db, { workspaceId }, async (tx) => {
@@ -134,7 +154,7 @@ export async function seedTenant(db: HandoffDatabase, label: string): Promise<Se
       kind: "daycare",
       profileCiphertext: syntheticEnvelope(`workspace-${label}`),
       timezone: "America/Vancouver",
-      storageBudgetBytes: 1_000_000,
+      storageBudgetBytes: options.storageBudgetBytes ?? 1_000_000,
     });
     await identityRepository.upsertMembership(tx, {
       workspaceId,

@@ -29,6 +29,20 @@
       "when": 1788725337558,
       "tag": "0003_journal_access",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788730356778,
+      "tag": "0004_media_and_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788730375311,
+      "tag": "0005_media_and_jobs_access",
+      "breakpoints": true
     }
   ]
 }

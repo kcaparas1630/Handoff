@@ -17,6 +17,8 @@ Drizzle numbers migrations from `0000`. The roadmap names them from `0001`.
 | `0001_access.sql` | `0002_access.sql` | `handoff_api` role, grants, row-level security |
 | `0002_journal_and_care.sql` | `0003_journal_and_care.sql` | Captures, events, revisions, care sessions, cursors, briefs |
 | `0003_journal_access.sql` | — | Grants and policies for those six tables, plus the children lookup policy |
+| `0004_media_and_jobs.sql` | `0004_media_and_jobs.sql` | Media assets and the durable job queue |
+| `0005_media_and_jobs_access.sql` | — | Grants, tenant policy for media, and the dispatcher role and queue policies |
 
 `0000_identity.sql` is generated, then hand-reordered so tables are created in dependency order
 (`users` and `workspaces`, then `data_keys`, then children, then invitations) and so the unique
@@ -40,6 +42,16 @@ so `pnpm db:generate` still reports no drift and none of these edits are reappli
 roadmap name: milestone 2 lists only the table migration, and splitting access out keeps the two
 kinds of review separate.
 
+`0004_media_and_jobs.sql` is generated as `0004_kind_whiplash.sql`, renamed, and its journal tag
+updated. Drizzle's numbering happens to match the roadmap name this time. One hand edit: every
+`ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY` moved below the `CREATE …INDEX` block, because
+`jobs_asset_fk` references `media_assets (workspace_id, child_id, id)` and drizzle emits that
+foreign key before the unique index backing it. The snapshot in `meta/0004_snapshot.json` stays
+exactly as generated, so `pnpm db:generate` still reports no drift.
+
+`0005_media_and_jobs_access.sql` is written by hand for the same reason as the other access
+migrations.
+
 ## Tenant-scoped and identity-scoped tables
 
 Tenant-scoped tables have row-level security enabled and forced, plus one policy for
@@ -48,7 +60,10 @@ Tenant-scoped tables have row-level security enabled and forced, plus one policy
 
 `workspaces` (compares its own `id`), `workspace_memberships`, `children`, `child_caregivers`,
 `invitation_intents`, `invitation_child_grants`, `captures`, `events`, `event_revisions`,
-`care_sessions`, `handoff_cursors`, `handoff_briefs`.
+`care_sessions`, `handoff_cursors`, `handoff_briefs`, `media_assets`.
+
+`jobs` has row-level security too, but its policies are keyed to the credential rather than only
+to the tenant; see the dispatcher section below.
 
 Tenant isolation is not child isolation. One daycare workspace holds many children, and the
 policies above cannot tell them apart; child services still check `child_caregivers` grants.
@@ -58,6 +73,33 @@ protected by grants and by the repositories that reach them:
 
 `users`, `data_keys` (rows are workspace- or user-scoped), `idempotency_requests` (keyed by actor),
 `webhook_inbox` (provider events), `audit_log` (records outlive the rows they describe).
+
+## The queue and its two credentials
+
+Data contract section 5 says the dispatcher credential "can claim queue entries but is not the
+mobile API credential". Claiming a job is an `UPDATE`, so `0005_media_and_jobs_access.sql` creates
+a second `NOLOGIN` role, `handoff_dispatcher`, and splits the queue by role:
+
+| Role | Grants on `handoff.jobs` | Policy |
+| --- | --- | --- |
+| `handoff_dispatcher` | `SELECT, INSERT, UPDATE` | `jobs_dispatcher_access`: every row, no tenant filter |
+| `handoff_api` | `SELECT, INSERT` | `jobs_api_tenant_read` and `jobs_api_tenant_insert`, both against `handoff.workspace_id` |
+
+The queue is deliberately global. Reconcile and maintenance jobs have no workspace at all, and a
+claim cannot filter by a tenant the worker has not resolved yet, so a tenant policy would make the
+table unusable for its own purpose. Restricting the *credential* instead is what keeps a mobile
+request from taking a lease. The dispatcher reaches exactly one table: everything a claimed job
+then does to captures, assets, and events runs in a tenant transaction on the API credential,
+using the workspace id from the trusted job row.
+
+`withJobTransaction` in `tenant-transaction.ts` is a plain `db.transaction` with no `set_config`,
+because there is no context to set; the reach is the credential. Run it on
+`DATABASE_JOB_DISPATCH_URL`.
+
+`handoff_api` is deliberately *not* granted `UPDATE` on `jobs`, which is the one place these
+migrations narrow what the milestone brief listed. With `UPDATE` the mobile API credential could
+issue a claim, which is precisely the capability the contract reserves. Cancelling a discarded
+capture's jobs therefore runs on the dispatcher credential.
 
 ## Transaction settings
 
@@ -139,3 +181,19 @@ transaction before any membership or workspace read.
 - **`events` and `event_revisions` annotate their extra-config callbacks** with
   `PgTableExtraConfigValue[]`. The two tables reference each other, which TypeScript cannot infer
   through; the annotation is the same escape hatch Drizzle documents for self-referencing keys.
+- **`media_assets.cleanup_state` is one enum, not two flags.** Section 3 asks for stored cleanup
+  state "so retries cannot decrement totals twice". `quota_released` means the reservation no
+  longer sits in `storage_reserved_bytes`, whether it was settled into `storage_used_bytes` on
+  validation or released after rejection or expiry; `object_deleted` records that the storage
+  object is gone. `markAssetDeleted` keeps whichever marker is further along, so the two paths
+  cannot erase each other. Decrementing `storage_used_bytes` when an already-settled asset is
+  deleted has no repository yet; it belongs with the milestone 5 purge capability.
+- **Quota moves do not bump `workspaces.version` or `updated_at`.** Same reasoning as the child
+  journal counter: reserving bytes is not a profile edit, and bumping the version would break
+  optimistic concurrency for a caller renaming the workspace.
+- **`jobs` has composite foreign keys to child, capture, and asset.** All three columns are
+  nullable and Postgres composite keys are `MATCH SIMPLE`, so each key applies only once every one
+  of its columns is set. A reconcile job with no workspace is unconstrained; a `validate_media`
+  job cannot name an asset from another tenant.
+- **`jobs` has no `version` column.** Section 5 lists "timestamps" for it, and the lease token is
+  what a worker's writes are checked against, so a second edit counter would mean nothing.

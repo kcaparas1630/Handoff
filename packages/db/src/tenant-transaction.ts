@@ -36,6 +36,19 @@ export async function withTenantTransaction<T>(
 }
 
 /**
+ * Queue work is global, so there is no context to set: the dispatcher's reach is the credential
+ * itself. Run this on `DATABASE_JOB_DISPATCH_URL`, whose role may claim jobs and read every row.
+ * Once a claimed job's workspace is known, the work itself reopens a tenant transaction on the
+ * API credential rather than continuing under the dispatcher.
+ */
+export async function withJobTransaction<T>(
+  db: HandoffDatabase,
+  run: (tx: HandoffTransaction) => Promise<T>,
+): Promise<T> {
+  return db.transaction(run);
+}
+
+/**
  * Sets the identity lookup context mid-transaction. Bootstrap needs this because it upserts the
  * user row before it knows the local user id; `users` carries no policy, so the insert works
  * first and the setting is applied before any membership or workspace read.

@@ -5,4 +5,6 @@ export { children, childCaregivers } from "./children";
 export { invitationIntents, invitationChildGrants } from "./invitations";
 export { idempotencyRequests, webhookInbox, auditLog } from "./infrastructure";
 export { captures, events, eventRevisions } from "./journal";
+export { mediaAssets } from "./media";
+export { jobs } from "./jobs";
 export { careSessions, handoffBriefs, handoffCursors } from "./care";
