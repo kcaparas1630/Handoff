@@ -13,6 +13,8 @@ Architecture package, prepared September 5, 2026:
 - [PII encryption](docs/pii-encryption.md): encrypt before Postgres writes, authorize before server decryption, external key management, rotation, and recovery.
 - [Agent conventions](AGENTS.md): repository instructions, also available through the `CLAUDE.md` symlink; [research rationale](docs/conventions-rationale.md).
 
-This repository currently contains a blueprint, not an implemented application. Performance and product metrics in the roadmap are proposed acceptance targets, not measured results.
+Milestone 1 (shared foundation, identity, child onboarding, invitations) is implemented; see the [milestone 1 report](docs/milestone-1-report.md) for what was verified and what remains. Milestones 2–5 are still blueprint. Performance and product metrics in the roadmap are proposed acceptance targets, not measured results.
+
+Local development: `docker compose up -d`, copy `.env.example` to `.env` and fill it, then `DATABASE_MIGRATION_URL=… pnpm db:migrate`, `pnpm dev:api`, and `pnpm dev:parents` or `pnpm dev:daycare`.
 
 `CLAUDE.md` is stored as a relative Git symlink to `AGENTS.md`. This Windows checkout currently lacks symlink privilege and uses Git's link-text fallback; read `AGENTS.md` directly until native symlink support is available. The repository link remains mode `120000`. [Git symlink checkout behavior](https://git-scm.com/docs/git-config#Documentation/git-config.txt-coresymlinks)
