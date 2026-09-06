@@ -1,0 +1,35 @@
+{
+  "name": "handoff",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --if-present typecheck",
+    "test:unit": "vitest run --project unit --passWithNoTests",
+    "test:integration": "vitest run --project integration --passWithNoTests",
+    "db:generate": "cd packages/db && drizzle-kit generate",
+    "db:migrate": "tsx packages/db/src/migrate.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "dev:parents": "pnpm --filter @handoff/parents start",
+    "dev:daycare": "pnpm --filter @handoff/daycare start",
+    "dev:api": "pnpm --filter @handoff/api dev",
+    "build:api": "pnpm --filter @handoff/api export"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.1",
+    "eslint": "10.10.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.69.0",
+    "vitest": "4.1.11",
+    "tsx": "^4.23.13"
+  }
+}

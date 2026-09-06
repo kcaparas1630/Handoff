@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+coverage
+.expo
+pnpm-lock.yaml
+
+# Documentation is hand-authored; the formatter owns source and configuration files.
+*.md
+docs/
+.claude/worktrees
