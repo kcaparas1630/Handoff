@@ -79,8 +79,11 @@ export function toEventDto(
   row: EventRow,
   payload: EventPayload,
   sourceQuote: string | null,
+  // Ready attachments come from the current revision snapshot; milestone 4 publishes them.
+  readyAssetIds: readonly string[] = [],
 ): EventDto {
   return {
+    readyAssetIds: [...readyAssetIds],
     id: row.id,
     childId: row.childId,
     workspaceId: row.workspaceId,

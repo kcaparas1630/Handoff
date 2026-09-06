@@ -87,6 +87,7 @@ function collapseEventGroup(group: RevisionForBrief[], timezone: string): Ranked
       reportedAt: last.createdAt.toISOString(),
       authorDisplayName: last.actorDisplayName,
       important: event.important,
+      readyAssetIds: last.snapshot.readyAssetIds,
     },
   };
 }
