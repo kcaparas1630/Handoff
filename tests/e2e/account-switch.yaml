@@ -1,0 +1,186 @@
+# UNEXECUTED. This flow has never been run: milestone 5 had no device, simulator, or Clerk
+# development instance available. Treat it as a reviewed script, not as passing evidence.
+#
+# This is the milestone 5 gate item "test logout/account switching with pending local files". It is
+# the one flow that must be run with the network deliberately off for part of its length, so the
+# recording really is still on the phone when the first account signs out.
+#
+# Requirements before the first run:
+#   - com.handoff.parents installed on a real device. The recorder needs a working microphone.
+#   - Two Clerk test accounts (`+clerk_test`) whose emailed code is the fixed test code in
+#     SIGN_IN_CODE. FIRST_EMAIL must already have a workspace containing CHILD_NAME with a
+#     contributor grant; SECOND_EMAIL must have NO access to that child and its own workspace with
+#     SECOND_CHILD_NAME. `tests/e2e/full-parent-flow.yaml` and the seed script cover that setup.
+#   - One running API and a disposable database. The worker may be running or not: this flow never
+#     waits for a draft.
+#   - Airplane mode is toggled by hand at the two MANUAL STEP markers. Maestro cannot change a
+#     device's radios, so a repeatable run needs those two steps automated per platform first.
+#   - `maestro test tests/e2e/account-switch.yaml`, once per platform.
+#
+# What it proves: a recording that never reached the server is deleted at sign-out after a clear
+# notice, the second account sees none of the first account's children, and nothing of the first
+# account's is uploaded once the connection returns.
+
+appId: com.handoff.parents
+env:
+  FIRST_EMAIL: "handoff.parent+clerk_test@example.com"
+  SECOND_EMAIL: "handoff.second+clerk_test@example.com"
+  SIGN_IN_CODE: "424242"
+  CHILD_NAME: "Pilot Child A"
+  SECOND_CHILD_NAME: "Pilot Child E"
+---
+# ── First account: sign in and open its child ────────────────────────────────────────
+- launchApp:
+    appId: "com.handoff.parents"
+    clearState: true
+    permissions:
+      microphone: allow
+
+- assertVisible:
+    id: "sign-in-email"
+- tapOn:
+    id: "sign-in-email"
+- inputText: "${FIRST_EMAIL}"
+- tapOn:
+    id: "sign-in-send-code"
+- tapOn:
+    id: "sign-in-code"
+- inputText: "${SIGN_IN_CODE}"
+- tapOn:
+    id: "sign-in-verify"
+
+- extendedWaitUntil:
+    visible: "${CHILD_NAME}"
+    timeout: 30000
+- tapOn: "${CHILD_NAME}"
+- assertVisible:
+    id: "care-dashboard"
+
+# Accept the processing notice now, while the connection is still up: PATCH /v1/me needs the API.
+- tapOn:
+    id: "dashboard-record"
+- assertVisible:
+    id: "record-screen"
+- runFlow:
+    when:
+      visible:
+        id: "processing-notice-accept"
+    commands:
+      - tapOn:
+          id: "processing-notice-accept"
+      - extendedWaitUntil:
+          visible:
+            id: "processing-notice-accepted"
+          timeout: 15000
+
+# MANUAL STEP: turn airplane mode ON now. The recording below must stay on the phone.
+
+# ── Record with no connection, so the file cannot leave the device ───────────────────
+- tapOn:
+    id: "record-start"
+# MANUAL STEP on the first run: say anything short aloud now.
+- assertVisible:
+    id: "record-stop"
+- tapOn:
+    id: "record-stop"
+- assertVisible: "Saved on this phone. Nothing is shared yet."
+
+# The dashboard offers the pending recording back, which is the visible proof it is still local.
+- tapOn:
+    id: "review-close"
+- assertVisible:
+    id: "care-dashboard"
+- assertVisible:
+    id: "dashboard-review-pending"
+
+# ── Privacy settings state exactly what is still on this phone ───────────────────────
+- tapOn:
+    id: "dashboard-open-settings"
+- assertVisible:
+    id: "privacy-settings"
+- scrollUntilVisible:
+    element:
+      id: "local-files-section"
+    direction: DOWN
+- assertVisible: "1 recording is still on this phone and not shared yet."
+
+# ── Signing out warns, then deletes those files before Clerk's session ends ──────────
+- scrollUntilVisible:
+    element:
+      id: "sign-out-section"
+    direction: DOWN
+- assertVisible:
+    id: "sign-out-pending-notice"
+- assertVisible: "1 recording that has not been sent yet will be deleted from this phone when you sign out."
+
+# With something unsent, signing out takes a second, deliberate tap.
+- tapOn:
+    id: "sign-out"
+- assertVisible:
+    id: "sign-out-confirm"
+- tapOn:
+    id: "sign-out-confirm"
+
+- extendedWaitUntil:
+    visible:
+      id: "sign-in-email"
+    timeout: 30000
+
+# ── Second account: sees nothing of the first ───────────────────────────────────────
+- tapOn:
+    id: "sign-in-email"
+- inputText: "${SECOND_EMAIL}"
+- tapOn:
+    id: "sign-in-send-code"
+- tapOn:
+    id: "sign-in-code"
+- inputText: "${SIGN_IN_CODE}"
+- tapOn:
+    id: "sign-in-verify"
+
+# MANUAL STEP: turn airplane mode OFF now. If the first account's recording had survived, the
+# outbox would upload it during the next sync, which is exactly what must not happen.
+
+- extendedWaitUntil:
+    visible: "${SECOND_CHILD_NAME}"
+    timeout: 60000
+# The first account's child is not on this roster, and its recording is not offered for review.
+- assertNotVisible: "${CHILD_NAME}"
+- assertNotVisible:
+    id: "dashboard-review-pending"
+
+- tapOn: "${SECOND_CHILD_NAME}"
+- assertVisible:
+    id: "care-dashboard"
+- assertNotVisible:
+    id: "dashboard-review-pending"
+
+# Settings under the second account report an empty phone: the first account's files are gone,
+# not merely hidden.
+- tapOn:
+    id: "dashboard-open-settings"
+- assertVisible:
+    id: "privacy-settings"
+- scrollUntilVisible:
+    element:
+      id: "local-files-section"
+    direction: DOWN
+- assertVisible: "Nothing is waiting on this phone. Every recording and file you made has reached Handoff."
+- assertNotVisible:
+    id: "sign-out-pending-notice"
+
+# The processing notice is per account: the second one has not accepted it and is still offered
+# the Accept action rather than inheriting the first account's acceptance.
+- scrollUntilVisible:
+    element:
+      id: "processing-notice"
+    direction: UP
+- assertVisible: "What leaves your phone"
+- assertVisible:
+    id: "processing-notice-accept"
+- assertNotVisible:
+    id: "processing-notice-accepted"
+# ── Server-side check, outside Maestro ──────────────────────────────────────────────
+# After this flow, confirm from the API that no capture exists for the first account with the
+# recording made above. Maestro can only prove the device forgot it; the server is the place that
+# proves nothing was uploaded.

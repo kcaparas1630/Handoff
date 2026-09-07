@@ -1,5 +1,6 @@
 import { useChild } from "@handoff/api-client";
 import { ChildProfileScreen } from "@handoff/features";
+import { useSelectedContext } from "@handoff/mobile";
 import { Screen, StatusMessage } from "@handoff/ui";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback } from "react";
@@ -8,7 +9,15 @@ export default function ChildProfileRoute() {
   const router = useRouter();
   const { childId } = useLocalSearchParams<{ childId: string }>();
   const child = useChild(childId ?? null);
+  const selectChild = useSelectedContext((state) => state.selectChild);
   const goBack = useCallback(() => router.back(), [router]);
+  const openSettings = useCallback(
+    (id: string) => {
+      selectChild(id);
+      router.push("/settings");
+    },
+    [router, selectChild],
+  );
 
   if (!childId) {
     return (
@@ -24,7 +33,7 @@ export default function ChildProfileRoute() {
   return (
     <>
       <Stack.Screen options={{ title: child.data?.name ?? "Child" }} />
-      <ChildProfileScreen childId={childId} onBack={goBack} />
+      <ChildProfileScreen childId={childId} onOpenSettings={openSettings} onBack={goBack} />
     </>
   );
 }

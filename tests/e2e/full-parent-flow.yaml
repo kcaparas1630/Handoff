@@ -1,0 +1,196 @@
+# UNEXECUTED. This flow has never been run: milestone 5 had no device, simulator, Clerk
+# development instance, or provisioned providers available. Treat it as a reviewed script, not as
+# passing evidence. The milestone 5 gate is not met until it passes on both iOS and Android with a
+# real physical-device recording.
+#
+# Requirements before the first run:
+#   - com.handoff.parents installed on a real device. The recorder needs a working microphone; the
+#     simulator's silent input produces an empty transcript, which this flow does not accept.
+#   - A Clerk development instance. CAREGIVER_EMAIL must be a Clerk test address (`+clerk_test`)
+#     whose emailed code is the fixed test code in SIGN_IN_CODE. The instance must allow users to
+#     create organizations: the onboarding screen creates the Clerk organization itself and then
+#     initializes the workspace. No real child or caregiver data belongs in this file.
+#   - One running API, one running worker (`pnpm dev:worker`), a disposable database, the private
+#     bucket from `pnpm storage:provision`, and DEEPGRAM_API_KEY / ANTHROPIC_API_KEY set for the
+#     worker only.
+#   - A clean install: this flow creates its own workspace and child, so it must not run against a
+#     device that already holds this account's data.
+#   - `maestro test tests/e2e/full-parent-flow.yaml`, once per platform.
+#
+# Every selector is a testID that exists in packages/features or packages/ui today, or rendered
+# text. Ids that are only known at runtime (event ids, draft ids, asset ids) are matched by their
+# rendered text instead.
+#
+# What this covers, end to end: onboard a household and a child, accept the processing notice,
+# record and review a real recording, save it, log a manual entry without voice, read the handoff,
+# and delete the child through settings with the two-step typed confirmation.
+
+appId: com.handoff.parents
+env:
+  CAREGIVER_EMAIL: "handoff.parent+clerk_test@example.com"
+  SIGN_IN_CODE: "424242"
+  WORKSPACE_NAME: "Pilot Household"
+  CHILD_NAME: "Pilot Child A"
+  SPOKEN_LINE: "Fed 60 ml at 2 pm"
+  FEED_AMOUNT: "60"
+---
+# ── Sign in ──────────────────────────────────────────────────────────────────────────
+- launchApp:
+    appId: "com.handoff.parents"
+    clearState: true
+    permissions:
+      microphone: allow
+
+- assertVisible:
+    id: "sign-in-email"
+- tapOn:
+    id: "sign-in-email"
+- inputText: "${CAREGIVER_EMAIL}"
+- tapOn:
+    id: "sign-in-send-code"
+- tapOn:
+    id: "sign-in-code"
+- inputText: "${SIGN_IN_CODE}"
+- tapOn:
+    id: "sign-in-verify"
+
+# ── Onboard a workspace and the first child ──────────────────────────────────────────
+- assertVisible:
+    id: "onboarding-workspace-name"
+- tapOn:
+    id: "onboarding-workspace-name"
+- inputText: "${WORKSPACE_NAME}"
+- tapOn:
+    id: "onboarding-create-workspace"
+
+- assertVisible:
+    id: "onboarding-child-name"
+- tapOn:
+    id: "onboarding-child-name"
+- inputText: "${CHILD_NAME}"
+- tapOn:
+    id: "onboarding-create-child"
+
+- assertVisible: "Your children"
+- tapOn: "${CHILD_NAME}"
+- assertVisible:
+    id: "care-dashboard"
+
+# ── The processing notice comes before the first recording ───────────────────────────
+- tapOn:
+    id: "dashboard-record"
+- assertVisible:
+    id: "record-screen"
+# The notice is on screen and both AI paths are refused until it is accepted. Typing is refused
+# too, because typed text also reaches the AI provider.
+- assertVisible:
+    id: "processing-notice"
+- assertVisible: "Recordings go to a transcription company"
+- assertVisible: "The words go to an AI company"
+- assertVisible: "Quick entry stays here"
+- assertVisible: "Read what leaves this phone above, then Accept to record or type."
+
+- tapOn:
+    id: "processing-notice-accept"
+- extendedWaitUntil:
+    visible:
+      id: "processing-notice-accepted"
+    timeout: 15000
+- assertVisible:
+    id: "record-start"
+
+# ── Record, review, and save ─────────────────────────────────────────────────────────
+- tapOn:
+    id: "record-start"
+# MANUAL STEP on the first run: say SPOKEN_LINE aloud now. Maestro cannot speak, so a repeatable
+# run needs audio injected into the device's microphone before this line.
+- assertVisible:
+    id: "record-stop"
+- tapOn:
+    id: "record-stop"
+
+- assertVisible: "Saved on this phone. Nothing is shared yet."
+- assertVisible:
+    id: "review-capture"
+- extendedWaitUntil:
+    visible: "Ready for review"
+    timeout: 60000
+- assertVisible: "Fed ${FEED_AMOUNT} ml.*"
+- tapOn:
+    id: "review-save"
+
+- assertVisible:
+    id: "review-saved"
+- tapOn:
+    id: "review-saved-done"
+- assertVisible:
+    id: "care-dashboard"
+- assertVisible: "Fed ${FEED_AMOUNT} ml.*"
+
+# ── Manual entry still works without voice ───────────────────────────────────────────
+- tapOn:
+    id: "quick-care-diaper"
+- assertVisible:
+    id: "diaper-contents"
+- tapOn: "Wet"
+- tapOn:
+    id: "entry-save"
+- assertVisible:
+    id: "care-dashboard"
+- assertVisible: "Saved:.*"
+
+# ── The handoff reads back what was recorded ─────────────────────────────────────────
+- tapOn:
+    id: "handoff-card-open"
+- assertVisible:
+    id: "handoff-screen"
+- assertVisible: "Fed ${FEED_AMOUNT} ml.*"
+- tapOn:
+    id: "handoff-acknowledge-only"
+- assertVisible:
+    id: "care-dashboard"
+
+# ── Delete the child from privacy settings ───────────────────────────────────────────
+# The entry point is the profile, and only an owner sees it.
+- tapOn:
+    id: "dashboard-open-profile"
+- scrollUntilVisible:
+    element:
+      id: "child-profile-delete"
+    direction: DOWN
+- tapOn:
+    id: "child-profile-delete"
+
+- assertVisible:
+    id: "privacy-settings"
+- scrollUntilVisible:
+    element:
+      id: "delete-child-open"
+    direction: DOWN
+- tapOn:
+    id: "delete-child-open"
+
+# Step one states the consequences; the button is not enabled by opening the panel.
+- assertVisible: "Every entry, correction, and handoff brief for this child is removed."
+- assertVisible: "Our transcription and AI providers keep their own copies for their own retention periods."
+
+# Step two requires the child's own name, so a mis-tap cannot delete anything.
+- tapOn:
+    id: "delete-child-phrase"
+- inputText: "${CHILD_NAME}"
+- tapOn:
+    id: "delete-child-confirm"
+
+# 202: the purge is a durable job, so the app reports that it started rather than that it finished.
+- extendedWaitUntil:
+    visible:
+      id: "delete-child-accepted"
+    timeout: 30000
+- assertVisible: "Deleting ${CHILD_NAME}. This can take a few minutes.*"
+- tapOn:
+    id: "delete-child-done"
+
+# The child is gone from the roster. Purge completion itself is verified server-side by
+# scripts/verify-purge.ts, not from the device.
+- assertVisible: "Your children"
+- assertNotVisible: "${CHILD_NAME}"

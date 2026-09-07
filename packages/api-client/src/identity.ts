@@ -1,5 +1,5 @@
-import { bootstrapResponseSchema, workspaceDtoSchema } from "@handoff/contracts";
-import type { CreateWorkspaceRequest } from "@handoff/contracts";
+import { bootstrapResponseSchema, selfUserDtoSchema, workspaceDtoSchema } from "@handoff/contracts";
+import type { CreateWorkspaceRequest, UpdateSelfRequest } from "@handoff/contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useApiClient, useApiUserId } from "./provider";
@@ -18,6 +18,24 @@ export function useBootstrap() {
     enabled: userId !== null,
     queryFn: () =>
       client.request(bootstrapResponseSchema, { method: "POST", path: "/v1/bootstrap" }),
+  });
+}
+
+/**
+ * Records which processing-notice version this account accepted (architecture.md section 9).
+ * The bootstrap query is the only reader of that field, so it is what gets invalidated.
+ */
+export function useUpdateSelf() {
+  const client = useApiClient();
+  const userId = useApiUserId();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateSelfRequest) =>
+      client.request(selfUserDtoSchema, { method: "PATCH", path: "/v1/me", body: request }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.bootstrap(userId) });
+    },
   });
 }
 

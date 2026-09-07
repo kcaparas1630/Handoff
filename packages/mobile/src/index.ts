@@ -3,6 +3,15 @@
 
 export { secureTokenCache } from "./auth/token-cache";
 export { MobileProviders } from "./providers";
+export {
+  areClientMetricsEnabled,
+  clearClientMetrics,
+  readClientMetrics,
+  recordClientMetric,
+  setClientMetricsEnabled,
+} from "./observability/metrics";
+export { useClientMetrics } from "./observability/useClientMetrics";
+export { CLIENT_METRIC_NAMES } from "./observability/types/metrics";
 export { useSelectedContext } from "./state/context-store";
 export { useRecordingStore } from "./state/recording-store";
 
@@ -67,6 +76,13 @@ export {
 } from "./outbox/lib/retry-schedule";
 
 export type { SelectedContextState } from "./types/context-store";
+export type {
+  ClientMetricFields,
+  ClientMetricName,
+  ClientMetricSample,
+  ClientMetricStatus,
+  ClientMetricsSnapshot,
+} from "./observability/types/metrics";
 export type { ActiveRecording, RecordingState } from "./types/recording-store";
 export type { MobileProvidersProps } from "./types/providers";
 export type {

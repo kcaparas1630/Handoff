@@ -7,6 +7,7 @@ import {
 import type { DraftCandidate, EventDto } from "@handoff/contracts";
 import {
   openOutbox,
+  recordClientMetric,
   retryOutboxCapture,
   useOutboxCapture,
   useRecordingStore,
@@ -54,6 +55,8 @@ export function ReviewCaptureScreen({
   const requestOutboxSync = useRecordingStore((state) => state.requestOutboxSync);
 
   const [candidates, setCandidates] = useState<DraftCandidate[] | null>(null);
+  // Counted once per capture: polling re-renders this screen every couple of seconds.
+  const countedReadyId = useRef<string | null>(null);
   const [savedEvents, setSavedEvents] = useState<readonly EventDto[] | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const seededVersion = useRef<number | null>(null);
@@ -72,6 +75,14 @@ export function ReviewCaptureScreen({
     seededVersion.current = draftVersion;
     setCandidates([...draft.candidates]);
   }, [draft, draftVersion]);
+
+  const captureStatus = capture.data?.status ?? null;
+  useEffect(() => {
+    if (captureStatus !== "needs_review" || captureId === null) return;
+    if (countedReadyId.current === captureId) return;
+    countedReadyId.current = captureId;
+    recordClientMetric("capture_review_ready", { status: "ok" });
+  }, [captureId, captureStatus]);
 
   const timezone = capture.data?.timezone ?? outbox.row?.timezone ?? null;
   const capturedAt = capture.data?.capturedAt ?? outbox.row?.capturedAt ?? null;

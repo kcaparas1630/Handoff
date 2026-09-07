@@ -1,5 +1,6 @@
 import { useChild } from "@handoff/api-client";
 import { CareDashboardScreen } from "@handoff/features";
+import { useSelectedContext } from "@handoff/mobile";
 import { Screen, StatusMessage } from "@handoff/ui";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback } from "react";
@@ -10,6 +11,7 @@ export default function ChildDashboardRoute() {
   const router = useRouter();
   const { childId } = useLocalSearchParams<{ childId: string }>();
   const child = useChild(childId ?? null);
+  const selectChild = useSelectedContext((state) => state.selectChild);
 
   const openHandoff = useCallback(
     (id: string) =>
@@ -25,6 +27,14 @@ export default function ChildDashboardRoute() {
     (id: string) =>
       router.push({ pathname: "/children/[childId]/profile", params: { childId: id } }),
     [router],
+  );
+  // Selecting the child first means the settings screen opens on the right record.
+  const openSettings = useCallback(
+    (id: string) => {
+      selectChild(id);
+      router.push("/settings");
+    },
+    [router, selectChild],
   );
   const openEvent = useCallback(
     (eventId: string) =>
@@ -65,6 +75,7 @@ export default function ChildDashboardRoute() {
         onOpenJournal={openJournal}
         onOpenEvent={openEvent}
         onOpenProfile={openProfile}
+        onOpenSettings={openSettings}
         onOpenRecord={openRecord}
         onOpenCapture={openCapture}
       />

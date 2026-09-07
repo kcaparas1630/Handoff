@@ -1,0 +1,228 @@
+# UNEXECUTED. This flow has never been run: milestone 5 had no device, simulator, Clerk
+# development instance, or provisioned providers available. Treat it as a reviewed script, not as
+# passing evidence. The milestone 5 gate is not met until it passes on both iOS and Android.
+#
+# Requirements before the first run:
+#   - Both builds installed on one device: com.handoff.daycare (staff) and com.handoff.parents
+#     (guardian). The flow switches between them with launchApp.
+#   - A Clerk development instance whose instance settings allow users to create organizations.
+#     Both addresses must be Clerk test addresses (`+clerk_test`) whose emailed code is the fixed
+#     test code in SIGN_IN_CODE. No real child or caregiver data belongs in this file.
+#   - One running API, one running worker (`pnpm dev:worker`), a disposable database, and the
+#     private bucket from `pnpm storage:provision`.
+#   - The guardian's invitation must be delivered by the running API: this flow sends it from the
+#     daycare app and then accepts it as the guardian, so the invitation email has to reach a Clerk
+#     test inbox. `tests/e2e/onboarding-invitation.yaml` covers that path in isolation.
+#   - `maestro test tests/e2e/full-daycare-flow.yaml`, once per platform.
+#
+# Every selector is a testID that exists in packages/features or packages/ui today, or rendered
+# text. Runtime ids (events, invitations, assets) are matched by their rendered text.
+#
+# What this covers: a daycare owner sets up a roster, invites a guardian, logs care by voice and by
+# hand; the guardian reads and acknowledges the handoff and is refused write access; the owner then
+# deletes the whole workspace with the stronger two-step confirmation and the guardian loses access.
+
+appId: com.handoff.daycare
+env:
+  OWNER_EMAIL: "handoff.daycare+clerk_test@example.com"
+  GUARDIAN_EMAIL: "handoff.parent+clerk_test@example.com"
+  SIGN_IN_CODE: "424242"
+  WORKSPACE_NAME: "Pilot Daycare"
+  CHILD_NAME: "Pilot Child A"
+  SPOKEN_LINE: "Slept forty minutes after lunch"
+---
+# ── Daycare owner: sign in and set up the roster ─────────────────────────────────────
+- launchApp:
+    appId: "com.handoff.daycare"
+    clearState: true
+    permissions:
+      microphone: allow
+
+- assertVisible:
+    id: "sign-in-email"
+- tapOn:
+    id: "sign-in-email"
+- inputText: "${OWNER_EMAIL}"
+- tapOn:
+    id: "sign-in-send-code"
+- tapOn:
+    id: "sign-in-code"
+- inputText: "${SIGN_IN_CODE}"
+- tapOn:
+    id: "sign-in-verify"
+
+- assertVisible:
+    id: "onboarding-workspace-name"
+- tapOn:
+    id: "onboarding-workspace-name"
+- inputText: "${WORKSPACE_NAME}"
+- tapOn:
+    id: "onboarding-create-workspace"
+
+- assertVisible:
+    id: "onboarding-child-name"
+- tapOn:
+    id: "onboarding-child-name"
+- inputText: "${CHILD_NAME}"
+- tapOn:
+    id: "onboarding-create-child"
+
+# The daycare flavor shows the roster under the location's name, not "Your children".
+- assertVisible: "${WORKSPACE_NAME}"
+- assertVisible: "Daycare roster"
+
+# ── Invite the guardian to this child ────────────────────────────────────────────────
+- tapOn:
+    id: "child-list-invite"
+- tapOn:
+    id: "invite-email"
+- inputText: "${GUARDIAN_EMAIL}"
+# Choice chips are tapped by their own label; the group testID identifies the field, not a chip.
+- assertVisible:
+    id: "invite-role"
+- tapOn: "Family guardian"
+- tapOn: "Parent"
+- tapOn: "Read only"
+- assertVisible:
+    id: "invite-children"
+- tapOn: "${CHILD_NAME}"
+- assertVisible: "✓ ${CHILD_NAME}"
+- tapOn:
+    id: "invite-submit"
+- extendedWaitUntil:
+    visible: "${GUARDIAN_EMAIL}"
+    timeout: 30000
+
+# ── Log care: once by voice, once by hand ────────────────────────────────────────────
+- tapOn: "${CHILD_NAME}"
+- assertVisible:
+    id: "care-dashboard"
+- tapOn:
+    id: "dashboard-record"
+- assertVisible:
+    id: "record-screen"
+
+# First voice use on this account shows the notice; quick entry never depends on it.
+- assertVisible:
+    id: "processing-notice"
+- tapOn:
+    id: "processing-notice-accept"
+- extendedWaitUntil:
+    visible:
+      id: "processing-notice-accepted"
+    timeout: 15000
+
+- tapOn:
+    id: "record-start"
+# MANUAL STEP on the first run: say SPOKEN_LINE aloud now.
+- assertVisible:
+    id: "record-stop"
+- tapOn:
+    id: "record-stop"
+- assertVisible: "Saved on this phone. Nothing is shared yet."
+- extendedWaitUntil:
+    visible: "Ready for review"
+    timeout: 60000
+- tapOn:
+    id: "review-save"
+- assertVisible:
+    id: "review-saved"
+- tapOn:
+    id: "review-saved-done"
+
+- assertVisible:
+    id: "care-dashboard"
+- tapOn:
+    id: "quick-care-feed"
+- tapOn:
+    id: "feed-amount"
+- inputText: "120"
+- tapOn:
+    id: "entry-save"
+- assertVisible: "Saved:.*"
+
+# ── Guardian: accepts, reads the handoff, acknowledges and starts care ───────────────
+- launchApp:
+    appId: "com.handoff.parents"
+    clearState: true
+
+- assertVisible:
+    id: "sign-in-email"
+- tapOn:
+    id: "sign-in-email"
+- inputText: "${GUARDIAN_EMAIL}"
+- tapOn:
+    id: "sign-in-send-code"
+- tapOn:
+    id: "sign-in-code"
+- inputText: "${SIGN_IN_CODE}"
+- tapOn:
+    id: "sign-in-verify"
+
+# The guardian sees exactly the one granted child and nothing else on the roster.
+- extendedWaitUntil:
+    visible: "${CHILD_NAME}"
+    timeout: 30000
+- tapOn: "${CHILD_NAME}"
+- assertVisible:
+    id: "care-dashboard"
+
+- tapOn:
+    id: "handoff-card-open"
+- assertVisible:
+    id: "handoff-screen"
+- assertVisible: "Fed 120 ml.*"
+- assertVisible: "Slept.*"
+- tapOn:
+    id: "handoff-acknowledge-start"
+- assertVisible:
+    id: "care-dashboard"
+
+# A guardian is read-only on a daycare child, whatever grant exists, so recording is refused.
+- assertVisible: "You can read this child's care but not add updates."
+
+# ── Owner: delete the whole workspace with the stronger confirmation ─────────────────
+- launchApp:
+    appId: "com.handoff.daycare"
+- assertVisible: "${WORKSPACE_NAME}"
+- tapOn:
+    id: "child-list-settings"
+- assertVisible:
+    id: "privacy-settings"
+
+- scrollUntilVisible:
+    element:
+      id: "delete-workspace-open"
+    direction: DOWN
+- tapOn:
+    id: "delete-workspace-open"
+
+# Workspace deletion has an extra acknowledgement step before the typed name, because it ends
+# other people's access rather than one record.
+- assertVisible: "Every child in this workspace is deleted, not just yours."
+- assertVisible: "Every staff member and family loses access, and open invitations stop working."
+- tapOn:
+    id: "delete-workspace-acknowledge"
+
+- tapOn:
+    id: "delete-workspace-phrase"
+- inputText: "${WORKSPACE_NAME}"
+- tapOn:
+    id: "delete-workspace-confirm"
+
+- extendedWaitUntil:
+    visible:
+      id: "delete-workspace-accepted"
+    timeout: 30000
+- assertVisible: "Deleting ${WORKSPACE_NAME}. This can take a few minutes.*"
+- tapOn:
+    id: "delete-workspace-done"
+
+# ── The guardian's access ends with the workspace ────────────────────────────────────
+# The documented verification window is one bootstrap refresh; a running app is not required to
+# notice instantly, but a relaunch must.
+- launchApp:
+    appId: "com.handoff.parents"
+- extendedWaitUntil:
+    notVisible: "${CHILD_NAME}"
+    timeout: 60000

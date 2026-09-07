@@ -34,6 +34,7 @@ export function CareDashboardScreen({
   onOpenJournal,
   onOpenEvent,
   onOpenProfile,
+  onOpenSettings,
   onOpenRecord,
   onOpenCapture,
 }: CareDashboardScreenProps) {
@@ -86,6 +87,7 @@ export function CareDashboardScreen({
         caringLine={describeCaring(data.activeSessions, ownUserId)}
         lastSyncedLine={describeLastSynced(overview.dataUpdatedAt, timezone)}
         onOpenProfile={() => onOpenProfile(childId)}
+        onOpenSettings={() => onOpenSettings(childId)}
       />
 
       {savedFact === null ? null : <StatusMessage tone="success" message={`Saved: ${savedFact}`} />}

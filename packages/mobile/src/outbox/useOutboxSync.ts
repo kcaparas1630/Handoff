@@ -2,6 +2,7 @@ import { useApiClient, useApiUserId } from "@handoff/api-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 
+import { recordClientMetric } from "../observability/metrics";
 import { useRecordingStore } from "../state/recording-store";
 import { listPendingForUser, openOutbox } from "./database";
 import { syncOutbox } from "./sync";
@@ -48,7 +49,9 @@ export function useOutboxSync(): { pendingCount: number } {
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (next) => {
-      if (next === "active") void drain();
+      if (next !== "active") return;
+      recordClientMetric("app_foreground");
+      void drain();
     });
     return () => subscription.remove();
   }, [drain]);

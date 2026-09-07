@@ -15,6 +15,7 @@ export default function HomeRoute() {
   );
   const openOnboarding = useCallback(() => router.push("/onboarding"), [router]);
   const openInvitations = useCallback(() => router.push("/invitations"), [router]);
+  const openSettings = useCallback(() => router.push("/settings"), [router]);
   const startOnboarding = useCallback(() => router.replace("/onboarding"), [router]);
 
   if (!isSignedIn) return <Redirect href="/sign-in" />;
@@ -25,6 +26,7 @@ export default function HomeRoute() {
       onSelectChild={openChild}
       onAddChild={openOnboarding}
       onInvite={openInvitations}
+      onOpenSettings={openSettings}
       onNeedsOnboarding={startOnboarding}
     />
   );

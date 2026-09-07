@@ -1,6 +1,7 @@
 import { useAcknowledgeBrief, useBootstrap, useBrief, useCreateBrief } from "@handoff/api-client";
 import type { BriefContextFact, BriefEntry, HandoffBriefDto } from "@handoff/contracts";
 import { formatWallDate } from "@handoff/domain";
+import { recordClientMetric } from "@handoff/mobile";
 import { Button, Screen, StatusMessage } from "@handoff/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -23,9 +24,30 @@ export function HandoffScreen({ childId, onDone, onOpenEvent }: HandoffScreenPro
   const brief = useBrief(briefId);
   const acknowledge = useAcknowledgeBrief(briefId ?? "");
 
+  const openedAt = useRef<number | null>(null);
   const requestBrief = useCallback(() => {
-    createBrief.mutate(undefined, { onSuccess: (created) => setBriefId(created.id) });
+    const startedAt = Date.now();
+    createBrief.mutate(undefined, {
+      onSuccess: (created) => {
+        // How long the reader waited for a readable brief, with no id and no content.
+        recordClientMetric("brief_opened", { durationMs: Date.now() - startedAt, status: "ok" });
+        openedAt.current = Date.now();
+        setBriefId(created.id);
+      },
+      onError: () => recordClientMetric("brief_opened", { status: "failed" }),
+    });
   }, [createBrief]);
+
+  const acknowledged = useCallback(() => {
+    // The device-side view of the roadmap's transition-effort metric; the authoritative interval
+    // is the brief's created_at to acknowledged_at, which scripts/measure-pilot.ts reads.
+    const openedMs = openedAt.current;
+    recordClientMetric("brief_acknowledged", {
+      ...(openedMs === null ? {} : { durationMs: Date.now() - openedMs }),
+      status: "ok",
+    });
+    onDone();
+  }, [onDone]);
 
   // One snapshot per visit. Opening or regenerating a brief never advances the caller's cursor.
   useEffect(() => {
@@ -153,7 +175,7 @@ export function HandoffScreen({ childId, onDone, onOpenEvent }: HandoffScreenPro
         <View className="gap-md">
           <Button
             label="I've read this — start care"
-            onPress={() => acknowledge.mutate({ startCare: true }, { onSuccess: onDone })}
+            onPress={() => acknowledge.mutate({ startCare: true }, { onSuccess: acknowledged })}
             isLoading={acknowledge.isPending}
             accessibilityHint="Marks this brief as read and opens your own care session"
             testID="handoff-acknowledge-start"
@@ -161,7 +183,7 @@ export function HandoffScreen({ childId, onDone, onOpenEvent }: HandoffScreenPro
           <Button
             label="Mark as read"
             variant="secondary"
-            onPress={() => acknowledge.mutate({ startCare: false }, { onSuccess: onDone })}
+            onPress={() => acknowledge.mutate({ startCare: false }, { onSuccess: acknowledged })}
             isLoading={acknowledge.isPending}
             accessibilityHint="Marks this brief as read without starting care"
             testID="handoff-acknowledge-only"

@@ -20,6 +20,7 @@
     "expo": "~57.0.20",
     "expo-audio": "~57.0.4",
     "expo-constants": "~57.0.17",
+    "expo-dev-client": "~57.0.18",
     "expo-file-system": "~57.0.6",
     "expo-image-manipulator": "~57.0.16",
     "expo-image-picker": "~57.0.16",

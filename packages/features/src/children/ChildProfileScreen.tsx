@@ -1,4 +1,4 @@
-import { useChild, useChildCaregivers } from "@handoff/api-client";
+import { useBootstrap, useChild, useChildCaregivers } from "@handoff/api-client";
 import { Button, Screen, StatusMessage } from "@handoff/ui";
 import { Text, View } from "react-native";
 
@@ -13,8 +13,9 @@ const relationshipLabels = {
   other: "Other",
 } as const;
 
-export function ChildProfileScreen({ childId, onBack }: ChildProfileScreenProps) {
+export function ChildProfileScreen({ childId, onOpenSettings, onBack }: ChildProfileScreenProps) {
   const child = useChild(childId);
+  const bootstrap = useBootstrap();
   // Only a manager may read the roster; the server answers 403 for readers and contributors.
   const canManageCaregivers = child.data?.permission === "manager";
   const caregivers = useChildCaregivers(canManageCaregivers ? childId : null);
@@ -39,6 +40,10 @@ export function ChildProfileScreen({ childId, onBack }: ChildProfileScreenProps)
   }
 
   const caregiverList = caregivers.data?.items ?? [];
+  // Deleting a child is a workspace-owner action, not a per-child manager one (data-contract §7).
+  const isWorkspaceOwner =
+    bootstrap.data?.workspaces.find((candidate) => candidate.id === child.data.workspaceId)
+      ?.appRole === "owner";
 
   return (
     <Screen scroll>
@@ -105,6 +110,16 @@ export function ChildProfileScreen({ childId, onBack }: ChildProfileScreenProps)
             message="You manage caregivers for this child. Send an invitation from the invitations screen to grant access; changing an existing grant arrives with the child dashboard."
           />
         </>
+      ) : null}
+
+      {isWorkspaceOwner ? (
+        <Button
+          label="Delete this child"
+          variant="secondary"
+          onPress={() => onOpenSettings(childId)}
+          accessibilityHint="Opens privacy and data, where deletion is confirmed by typing the child's name"
+          testID="child-profile-delete"
+        />
       ) : null}
 
       <Button label="Back" variant="quiet" onPress={onBack} />

@@ -23,6 +23,12 @@ export {
   remainingAttachmentSlots,
 } from "./recording/lib/attachment-limits";
 export { HandoffScreen } from "./handoff/HandoffScreen";
+export { PrivacySettingsScreen } from "./settings/PrivacySettingsScreen";
+export { ProcessingNoticeCard } from "./settings/ProcessingNoticeCard";
+export {
+  PROCESSING_NOTICE_VERSION,
+  hasAcceptedProcessingNotice,
+} from "./settings/lib/processing-notice";
 export { CareStatus } from "./care/CareStatus";
 
 export type { SignInMode, SignInScreenProps, SignInStep } from "./auth/types/sign-in-screen";
@@ -61,3 +67,8 @@ export type {
 export type { AddAttachmentContext } from "./recording/useAddAttachment";
 export type { BriefEntryRowProps, HandoffScreenProps } from "./handoff/types/handoff-screen";
 export type { CareStatusProps } from "./care/types/care-status";
+export type {
+  DangerConfirmationProps,
+  PrivacySettingsScreenProps,
+} from "./settings/types/privacy-settings-screen";
+export type { ProcessingNoticeCardProps } from "./settings/types/processing-notice";

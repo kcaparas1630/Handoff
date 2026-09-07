@@ -3,6 +3,7 @@ import type { ApiClient } from "@handoff/api-client";
 import type { UploadAuthorization } from "@handoff/contracts";
 import type { SQLiteDatabase } from "expo-sqlite";
 
+import { recordClientMetric } from "../observability/metrics";
 import {
   advanceAttachmentStage,
   deleteOutboxAttachment,
@@ -126,6 +127,10 @@ async function processAttachment(
     if (current.stage === "uploaded") {
       await reportCompletion(client, current);
       await advanceAttachmentStage(db, current.localId, { stage: "completed" });
+      recordClientMetric("attachment_uploaded", {
+        durationMs: Date.now() - Date.parse(current.createdAt),
+        status: "ok",
+      });
       onStageCommitted("completed");
       current = { ...current, stage: "completed" };
       continue;

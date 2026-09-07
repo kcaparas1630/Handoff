@@ -11,6 +11,7 @@ export function DashboardHeader({
   caringLine,
   lastSyncedLine,
   onOpenProfile,
+  onOpenSettings,
 }: DashboardHeaderProps) {
   return (
     <View className="gap-xs">
@@ -22,13 +23,24 @@ export function DashboardHeader({
       </View>
       <Text className="text-base text-primary dark:text-primary-dark">{caringLine}</Text>
       <Text className="text-sm text-muted dark:text-muted-dark">{lastSyncedLine}</Text>
-      <Button
-        label="Profile and caregivers"
-        variant="quiet"
-        onPress={onOpenProfile}
-        accessibilityHint={`Opens ${childName}'s profile`}
-        testID="dashboard-open-profile"
-      />
+      <View className="flex-row gap-md">
+        <Button
+          label="Profile and caregivers"
+          variant="quiet"
+          onPress={onOpenProfile}
+          accessibilityHint={`Opens ${childName}'s profile`}
+          className="flex-1"
+          testID="dashboard-open-profile"
+        />
+        <Button
+          label="Privacy and data"
+          variant="quiet"
+          onPress={onOpenSettings}
+          accessibilityHint="What leaves your phone, deleting records, and signing out"
+          className="flex-1"
+          testID="dashboard-open-settings"
+        />
+      </View>
     </View>
   );
 }

@@ -8,6 +8,7 @@ import type { ApiClient } from "@handoff/api-client";
 import type { CaptureDto, UploadAuthorization } from "@handoff/contracts";
 import type { SQLiteDatabase } from "expo-sqlite";
 
+import { recordClientMetric } from "../observability/metrics";
 import { syncAttachments } from "./attachment-sync";
 import { advanceStage, deleteOutboxCapture, listPendingForUser, markFailed } from "./database";
 import { isAttemptDue, planRetry } from "./lib/retry-schedule";
@@ -129,6 +130,11 @@ async function processRow(
     if (current.stage === "uploaded") {
       await reportCompletion(client, current);
       await advanceStage(db, current.localId, { stage: "completed" });
+      // Counted once per recording: the stage transition commits before the next pass reads it.
+      recordClientMetric("capture_uploaded", {
+        durationMs: Date.now() - Date.parse(current.createdAt),
+        status: "ok",
+      });
       current = { ...current, stage: "completed" };
       continue;
     }

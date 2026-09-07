@@ -11,6 +11,9 @@ function scope(id: string | null): string {
 
 export const queryKeys = {
   bootstrap: (userId: string | null) => ["bootstrap", scope(userId)] as const,
+  // Prefix over every workspace's roster. Deleting a child or a workspace invalidates this rather
+  // than one workspace, because the removed scope is exactly the one that no longer exists.
+  childrenForUser: (userId: string | null) => ["children", scope(userId)] as const,
   children: (userId: string | null, workspaceId: string | null) =>
     ["children", scope(userId), scope(workspaceId)] as const,
   child: (userId: string | null, childId: string | null) =>

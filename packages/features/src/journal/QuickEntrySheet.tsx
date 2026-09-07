@@ -1,5 +1,6 @@
 import { isApiClientError, useSaveManualEntry } from "@handoff/api-client";
 import type { EventKind } from "@handoff/contracts";
+import { recordClientMetric } from "@handoff/mobile";
 import { Button, StatusMessage } from "@handoff/ui";
 import { useState } from "react";
 import { Alert, Modal, Pressable, ScrollView, Text, View } from "react-native";
@@ -85,9 +86,13 @@ export function QuickEntrySheet({
         ...(careSessionId === undefined ? {} : { careSessionId }),
       },
       {
-        onSuccess: (event) => onSaved(event),
+        onSuccess: (event) => {
+          recordClientMetric("manual_entry_saved", { status: "ok" });
+          onSaved(event);
+        },
         // The input stays on screen so a failed save can be retried without retyping.
         onError: (error) => {
+          recordClientMetric("manual_entry_saved", { status: "failed" });
           if (isApiClientError(error)) setErrors(fieldErrorsFromApi(error.fieldErrors));
         },
       },

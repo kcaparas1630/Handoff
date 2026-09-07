@@ -9,9 +9,11 @@
   },
   "scripts": {
     "lint": "eslint .",
+    "check:boundaries": "node scripts/check-package-boundaries.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --if-present typecheck",
     "test:unit": "vitest run --project unit --passWithNoTests",
     "test:integration": "vitest run --project integration --passWithNoTests",
+    "test:e2e": "maestro test tests/e2e",
     "db:generate": "cd packages/db && drizzle-kit generate",
     "db:migrate": "tsx packages/db/src/migrate.ts",
     "format": "prettier --write .",
@@ -22,6 +24,8 @@
     "dev:worker": "pnpm --filter @handoff/worker start",
     "eval:extraction": "tsx scripts/evaluate-extraction.ts",
     "storage:provision": "tsx scripts/provision-storage.ts",
+    "seed:pilot": "tsx scripts/seed-pilot.ts",
+    "measure:pilot": "tsx scripts/measure-pilot.ts",
     "build:api": "pnpm --filter @handoff/api export"
   },
   "devDependencies": {

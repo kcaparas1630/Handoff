@@ -7,6 +7,8 @@ export type CareDashboardScreenProps = {
   onOpenJournal: (childId: string) => void;
   onOpenEvent: (eventId: string) => void;
   onOpenProfile: (childId: string) => void;
+  /** Privacy and data for this workspace and child, including deletion and sign-out. */
+  onOpenSettings: (childId: string) => void;
   onOpenRecord: (childId: string) => void;
   /** Opens a capture already being processed; `local:<id>` addresses one still on this phone. */
   onOpenCapture: (captureRef: string) => void;
@@ -20,4 +22,5 @@ export type DashboardHeaderProps = {
   /** "last synced 09:05", or the plain absence of a sync time. */
   lastSyncedLine: string;
   onOpenProfile: () => void;
+  onOpenSettings: () => void;
 };

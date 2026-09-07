@@ -4,7 +4,8 @@ export { ApiClientError, createApiClient, isApiClientError } from "./http";
 export { ApiClientProvider, useApiClient, useApiUserId } from "./provider";
 export { queryKeys } from "./query-keys";
 
-export { useBootstrap, useCreateWorkspace } from "./identity";
+export { useBootstrap, useCreateWorkspace, useUpdateSelf } from "./identity";
+export { useDeleteChild, useDeleteWorkspace } from "./deletion";
 export {
   useChild,
   useChildCaregivers,
@@ -50,6 +51,7 @@ export { useCare, useCareAction } from "./care";
 export { useAcknowledgeBrief, useBrief, useCreateBrief } from "./handoffs";
 
 export type { ApiClientProviderProps } from "./provider";
+export type { DeletionAccepted } from "./deletion";
 export type { RevokeInvitationVariables } from "./invitations";
 export type { DeleteEventVariables, UpdateEventVariables } from "./events";
 export type {

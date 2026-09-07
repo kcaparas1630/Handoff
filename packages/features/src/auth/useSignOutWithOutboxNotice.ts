@@ -1,5 +1,6 @@
 import { useApiUserId } from "@handoff/api-client";
 import {
+  clearClientMetrics,
   deleteAllForUser,
   openOutbox,
   useOutboxAttachments,
@@ -10,9 +11,11 @@ import { useCallback } from "react";
 import type { SignOutWithOutboxNotice } from "./types/sign-out-notice";
 
 /**
- * architecture.md section 7: signing out removes this account's local recordings, attachments, and
- * outbox, after a clear notice about what is still unsent. The app calls Clerk's signOut once
- * `confirmSignOut` resolves, so the files are gone before another account can sign in.
+ * architecture.md section 7: signing out removes this account's local recordings, attachment
+ * files, outbox rows, and in-memory counters, after a clear notice about what is still unsent.
+ * `deleteAllForUser` removes both tables and unlinks each recording and attachment file from
+ * document storage. The app calls Clerk's signOut once `confirmSignOut` resolves, so nothing of
+ * this account is left on the phone before another one can sign in.
  */
 export function useSignOutWithOutboxNotice(): SignOutWithOutboxNotice {
   const clerkUserId = useApiUserId();
@@ -21,6 +24,9 @@ export function useSignOutWithOutboxNotice(): SignOutWithOutboxNotice {
   const pendingCount = recordings.length + attachments.summary.localCount;
 
   const confirmSignOut = useCallback(async (): Promise<void> => {
+    // Counters carry no ids, but they still describe this account's session and must not survive
+    // into the next one.
+    clearClientMetrics();
     if (clerkUserId === null) return;
     const db = await openOutbox();
     await deleteAllForUser(db, clerkUserId);

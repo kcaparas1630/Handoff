@@ -13,6 +13,7 @@ export function ChildListScreen({
   onSelectChild,
   onAddChild,
   onInvite,
+  onOpenSettings,
   onNeedsOnboarding,
 }: ChildListScreenProps) {
   const bootstrap = useBootstrap();
@@ -138,6 +139,13 @@ export function ChildListScreen({
           testID="child-list-invite"
         />
       ) : null}
+      <Button
+        label="Privacy and data"
+        variant="quiet"
+        onPress={onOpenSettings}
+        accessibilityHint="What leaves your phone, deleting records, files on this phone, and signing out"
+        testID="child-list-settings"
+      />
     </Screen>
   );
 }
