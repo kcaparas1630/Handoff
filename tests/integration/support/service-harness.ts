@@ -12,6 +12,7 @@ import { updateChildCaregivers } from "../../../packages/server/src/services/chi
 import { createChild } from "../../../packages/server/src/services/children";
 import { initializeWorkspace } from "../../../packages/server/src/services/workspaces";
 import { createFakeClerkGateway } from "./fake-clerk-gateway";
+import { testObservability } from "./observability";
 import { createTestDatabase } from "./test-database";
 import type { ChildCaregiverGrant, WorkspaceKind } from "../../../packages/contracts/src/index";
 import type { DbClient } from "../../../packages/db/src/client";
@@ -65,6 +66,7 @@ export async function createHarness(): Promise<TestHarness> {
       invitationRedirectUrl: "https://handoff.test/accept-invitation",
       storage: null,
       jobsDb: null,
+      ...testObservability(),
       requestId: randomUUID(),
       now: () => fixedNow ?? new Date(),
     },

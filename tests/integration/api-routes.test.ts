@@ -77,6 +77,7 @@ import type { FakeClerkGateway } from "./support/fake-clerk-gateway";
 import { createFakeClerkGateway } from "./support/fake-clerk-gateway";
 import type { TestDatabase } from "./support/test-database";
 import { createTestDatabase, missingDatabaseUrlMessage } from "./support/test-database";
+import { testObservability } from "./support/observability";
 
 const describeIntegration = process.env.DATABASE_URL ? describe : describe.skip;
 if (!process.env.DATABASE_URL)
@@ -287,6 +288,19 @@ describeIntegration("v1 API routes", () => {
     );
   }
 
+  /** A second child the deletion test can remove without taking the shared fixture with it. */
+  async function createChildFor(token: string, name: string): Promise<string> {
+    const created = await workspaceChildrenRoute.POST(
+      jsonRequest("POST", `/v1/workspaces/${workspaceId}/children`, {
+        headers: authorized(token, randomUUID()),
+        body: JSON.stringify({ name }),
+      }),
+      { workspaceId },
+    );
+    expect(created.status).toBe(201);
+    return childDtoSchema.parse(await readBody(created)).id;
+  }
+
   async function createBriefFor(token: string): Promise<Response> {
     return childHandoffsRoute.POST(
       jsonRequest("POST", `/v1/children/${childId}/handoffs`, {
@@ -312,6 +326,7 @@ describeIntegration("v1 API routes", () => {
       invitationRedirectUrl: `${ORIGIN}/accept-invitation`,
       storage,
       jobsDb: dispatcher.db,
+      ...testObservability(),
       now: () => new Date(),
       close: () => api.close(),
     };
@@ -633,14 +648,31 @@ describeIntegration("v1 API routes", () => {
     }
   });
 
-  it("reserves child deletion until the purge job exists", async () => {
+  it("accepts child deletion, makes the child invisible, and queues its purge", async () => {
+    const deletable = await createChildFor(OWNER_TOKEN, "Deletable");
     const response = await childRoute.DELETE(
-      jsonRequest("DELETE", `/v1/children/${childId}`, { headers: authorized(OWNER_TOKEN) }),
+      jsonRequest("DELETE", `/v1/children/${deletable}`, {
+        headers: authorized(OWNER_TOKEN, randomUUID()),
+      }),
+      { childId: deletable },
     );
-    expect(response.status).toBe(501);
-    const body = await readBody(response);
-    expect(body.code).toBe("internal");
-    expect(body.message).toBe("Child deletion arrives with the purge job in milestone 5");
+    expect(response.status).toBe(202);
+    expect(await readBody(response)).toEqual({ childId: deletable, status: "deleting" });
+
+    // Invisible at once: the reserved endpoint is what schedules the purge, not what performs it.
+    const missing = await childRoute.GET(
+      jsonRequest("GET", `/v1/children/${deletable}`, { headers: authorized(OWNER_TOKEN) }),
+      { childId: deletable },
+    );
+    expect(missing.status).toBe(404);
+
+    const repeated = await childRoute.DELETE(
+      jsonRequest("DELETE", `/v1/children/${deletable}`, {
+        headers: authorized(OWNER_TOKEN, randomUUID()),
+      }),
+      { childId: deletable },
+    );
+    expect(repeated.status).toBe(202);
   });
 
   it("renders the invitation landing page without echoing the Clerk ticket", async () => {

@@ -117,3 +117,28 @@ export async function listInvitationsForWorkspace(
     .where(eq(invitationIntents.workspaceId, workspaceId))
     .orderBy(invitationIntents.createdAt, invitationIntents.id);
 }
+
+/**
+ * Workspace deletion closes every invitation that could still be accepted. Resolved ones keep the
+ * status they reached; the purge removes the rows themselves later.
+ */
+export async function revokeOpenInvitationsForWorkspace(
+  tx: HandoffTransaction,
+  workspaceId: string,
+): Promise<string[]> {
+  const rows = await tx
+    .update(invitationIntents)
+    .set({
+      status: "revoked",
+      updatedAt: sql`now()`,
+      version: sql`${invitationIntents.version} + 1`,
+    })
+    .where(
+      and(
+        eq(invitationIntents.workspaceId, workspaceId),
+        inArray(invitationIntents.status, ["pending_send", "sent", "reconcile_needed"]),
+      ),
+    )
+    .returning({ id: invitationIntents.id });
+  return rows.map((row) => row.id);
+}

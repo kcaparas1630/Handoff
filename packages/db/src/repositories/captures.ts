@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { captures } from "../schema";
 import type { HandoffTransaction } from "../types/database";
 import type {
@@ -116,6 +116,28 @@ export async function countPendingCapturesForChild(
         eq(captures.workspaceId, workspaceId),
         eq(captures.childId, childId),
         inArray(captures.status, pendingStatuses),
+      ),
+    );
+  return row?.count ?? 0;
+}
+
+/**
+ * How many captures this author has started in this workspace since an instant. The per-user
+ * daily cap reads it before any storage or provider work is reserved. Cancelled rows still count:
+ * the cap bounds submissions, not successful ones.
+ */
+export async function countCapturesByAuthorSince(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; authorUserId: string; since: Date },
+): Promise<number> {
+  const [row] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(captures)
+    .where(
+      and(
+        eq(captures.workspaceId, input.workspaceId),
+        eq(captures.authorUserId, input.authorUserId),
+        gte(captures.createdAt, input.since),
       ),
     );
   return row?.count ?? 0;

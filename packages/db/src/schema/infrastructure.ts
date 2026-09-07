@@ -1,5 +1,15 @@
 import { sql } from "drizzle-orm";
-import { check, integer, jsonb, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  check,
+  date,
+  integer,
+  jsonb,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { bytea } from "./bytea";
 import { dataKeys } from "./data-keys";
 import { encryptionScopeKind, webhookStatus } from "./enums";
@@ -71,3 +81,20 @@ export const auditLog = handoffSchema.table("audit_log", {
   requestId: text("request_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
+
+// Numbers only: how much paid provider work one workspace has consumed on one UTC day. It holds
+// no identifiers beyond the workspace and no content, and it is what the daily spend cap reads.
+export const providerUsage = handoffSchema.table(
+  "provider_usage",
+  {
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    day: date("day", { mode: "string" }).notNull(),
+    tokensIn: bigint("tokens_in", { mode: "number" }).notNull().default(0),
+    tokensOut: bigint("tokens_out", { mode: "number" }).notNull().default(0),
+    audioSeconds: bigint("audio_seconds", { mode: "number" }).notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.workspaceId, table.day] })],
+);

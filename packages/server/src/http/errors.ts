@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { apiErrorSchema } from "@handoff/contracts";
 import type { ApiError, ApiErrorCode } from "@handoff/contracts";
+import type { Logger } from "../types/observability";
 
 export interface ApiHttpErrorInput {
   status: number;
@@ -109,13 +110,15 @@ function toApiError(error: unknown, requestId: string): { status: number; body: 
 }
 
 /** Builds the contract error response. Sensitive responses are never cached. */
-export function toErrorResponse(error: unknown, requestId: string): Response {
+export function toErrorResponse(error: unknown, requestId: string, logger?: Logger): Response {
   const { status, body } = toApiError(error, requestId);
   if (status >= 500) {
     // Request id and error name only: bodies and messages can contain personal data.
-    console.error(
-      `request ${requestId} failed: ${error instanceof Error ? error.name : "UnknownError"}`,
-    );
+    logger?.error("request_failed", {
+      requestId,
+      status,
+      errorCode: error instanceof Error ? error.name : "UnknownError",
+    });
   }
   return new Response(JSON.stringify(apiErrorSchema.parse(body)), {
     status,

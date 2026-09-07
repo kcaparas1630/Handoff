@@ -5,6 +5,21 @@ import type { ObjectStorage } from "../storage/object-storage";
 import type { TranscriptionProvider } from "../transcription/provider";
 import type { ClerkGateway } from "./clerk";
 import type { KeyWrapper } from "./encryption";
+import type { Logger, MetricsRegistry } from "./observability";
+
+/**
+ * Configured ceilings the services enforce. They come from validated configuration, so no service
+ * reads the environment and a test can run against its own numbers.
+ */
+export interface RuntimeLimits {
+  /** Captures one author may create in one workspace on one UTC day. */
+  capturesPerUserPerDay: number;
+  audioSecondsPerWorkspacePerDay: number;
+  /** Estimated provider spend, priced with lib/provider-rates.ts. */
+  extractionUsdPerWorkspacePerDay: number;
+  /** How long a deleted workspace's scope keys stay decrypt-only before they may be retired. */
+  workspaceKeyRetentionDays: number;
+}
 
 /** Process-lifetime collaborators built once from validated configuration. */
 export interface ServerRuntime {
@@ -18,6 +33,10 @@ export interface ServerRuntime {
   storage: ObjectStorage | null;
   /** The queue credential's own pool. Null when DATABASE_JOB_DISPATCH_URL is not set. */
   jobsDb: HandoffDatabase | null;
+  limits: RuntimeLimits;
+  /** Process-wide counters. Snapshots are dumped on an interval; there is no metrics backend. */
+  metrics: MetricsRegistry;
+  logger: Logger;
   now: () => Date;
   close: () => Promise<void>;
 }
@@ -36,6 +55,9 @@ export interface ServiceDeps {
    * is not, so requeueing a failed capture runs here (packages/db/migrations/README.md).
    */
   jobsDb: HandoffDatabase | null;
+  limits: RuntimeLimits;
+  metrics: MetricsRegistry;
+  logger: Logger;
   requestId: string;
   now: () => Date;
 }

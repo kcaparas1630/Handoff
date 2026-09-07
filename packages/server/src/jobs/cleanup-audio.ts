@@ -11,6 +11,7 @@ import {
 } from "@handoff/db";
 import type { HandoffDatabase, MediaAssetRow } from "@handoff/db";
 import { cleanupAudioDedupeKey } from "../services/job-keys";
+import { recordStorageLevels } from "../observability/metrics";
 import type { JobHandler } from "../types/jobs";
 import type { WorkerRuntime } from "../types/runtime";
 
@@ -115,10 +116,11 @@ async function purgeAsset(runtime: WorkerRuntime, asset: MediaAssetRow): Promise
       assetId: asset.id,
     });
     if (released === null) return;
-    await storageQuotaRepository.releaseStorageBytes(tx, {
+    const levels = await storageQuotaRepository.releaseStorageBytes(tx, {
       workspaceId,
       reservedBytes: asset.reservedBytes,
     });
+    recordStorageLevels(runtime.metrics, levels);
   });
 }
 

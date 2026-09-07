@@ -7,10 +7,14 @@ import {
   createWorkerRuntime,
   loadServerEnv,
   processCapture,
+  purgeChild,
+  purgeWorkspace,
   reconcileClerk,
   requireWorkerEnv,
+  rotateDataKeys,
   scheduleReconciliation,
   ServerEnvError,
+  startMetricsDump,
   validateMedia,
 } from "@handoff/server";
 
@@ -30,6 +34,9 @@ async function main(): Promise<void> {
       reconcile_clerk: reconcileClerk,
       cleanup_audio: cleanupAudio,
       cleanup_uploads: cleanupUploads,
+      purge_child: purgeChild,
+      purge_workspace: purgeWorkspace,
+      rotate_data_keys: rotateDataKeys,
     },
     concurrency: env.workerConcurrency,
     leaseMs: env.workerLeaseSeconds * 1000,
@@ -37,22 +44,25 @@ async function main(): Promise<void> {
 
   // Pending provider reconciliations are scheduled once at startup; each becomes its own job.
   const scheduled = await scheduleReconciliation({ db: runtime.db, jobsDb: runtime.jobsDb });
-  console.info(
-    JSON.stringify({
-      event: "worker_started",
-      concurrency: env.workerConcurrency,
-      leaseSeconds: env.workerLeaseSeconds,
-      reconciliationsScheduled: scheduled,
-    }),
-  );
+  runtime.logger.info("worker_started", {
+    count: scheduled,
+    durationMs: env.workerLeaseSeconds * 1000,
+  });
 
+  // There is no metrics backend in the pilot: the snapshot is a JSON line the runbook reads.
+  const stopMetrics = startMetricsDump({
+    metrics: runtime.metrics,
+    service: "worker",
+    intervalSeconds: env.metricsFlushSeconds,
+  });
   runner.start();
 
   let shuttingDown = false;
   const shutdown = (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.info(JSON.stringify({ event: "worker_stopping", signal }));
+    runtime.logger.info("worker_stopping", { status: signal });
+    stopMetrics();
     // In-flight handlers finish first: a job abandoned mid-write would wait out its lease.
     void runner
       .stop()

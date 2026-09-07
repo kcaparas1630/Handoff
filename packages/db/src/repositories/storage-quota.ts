@@ -72,6 +72,25 @@ export async function releaseStorageBytes(
   return row ?? null;
 }
 
+/**
+ * Gives back bytes that had already been settled into `storage_used_bytes`, which is what a purged
+ * asset's object leaves behind. Call only when the asset's own `deleting -> deleted` transition
+ * returned a row, in the same transaction; that transition is the once-only guard.
+ */
+export async function releaseStoredBytes(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; actualBytes: number },
+): Promise<WorkspaceStorageRow | null> {
+  const [row] = await tx
+    .update(workspaces)
+    .set({
+      storageUsedBytes: sql`greatest(${workspaces.storageUsedBytes} - ${input.actualBytes}, 0)`,
+    })
+    .where(eq(workspaces.id, input.workspaceId))
+    .returning(storageColumns);
+  return row ?? null;
+}
+
 export async function findWorkspaceStorage(
   tx: HandoffTransaction,
   workspaceId: string,

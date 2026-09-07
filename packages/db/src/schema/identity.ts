@@ -35,6 +35,9 @@ export const workspaces = handoffSchema.table("workspaces", {
   profileCiphertext: jsonb("profile_ciphertext").notNull(),
   timezone: text("timezone").notNull(),
   status: workspaceStatus("status").notNull().default("active"),
+  // When deletion was requested. The key retention window is measured from it, so it must not
+  // move when a later purge stage touches the row.
+  deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
   storageBudgetBytes: bigint("storage_budget_bytes", { mode: "number" }).notNull(),
   storageReservedBytes: bigint("storage_reserved_bytes", { mode: "number" }).notNull().default(0),
   storageUsedBytes: bigint("storage_used_bytes", { mode: "number" }).notNull().default(0),

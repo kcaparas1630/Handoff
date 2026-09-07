@@ -230,6 +230,7 @@ For all state-changing app requests, require a client-generated UUID `Idempotenc
 | Endpoint | Behavior |
 | --- | --- |
 | `GET /health` | Runtime readiness; no secrets |
+| `PATCH /me` | Record the accepted processing-notice version for the caller and return their own user record |
 | `POST /bootstrap` | Upsert local user by verified Clerk subject, reconcile eligible org memberships/invitations, return available workspaces |
 | `POST /workspaces` | Verify supplied Clerk organization admin membership; initialize workspace and owner idempotently |
 | `DELETE /workspaces/:workspaceId` | Owner only; mark workspace inaccessible and enqueue full purge; implemented in milestone 5 |

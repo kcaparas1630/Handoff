@@ -336,14 +336,24 @@ describeIntegration("durable job queue", () => {
     expect(workspaceIds).toEqual(new Set([tenant.workspaceId, other.workspaceId, null]));
   });
 
-  it("keeps the dispatcher out of every table except the queue", async () => {
+  it("limits the dispatcher to the queue and the tables the purge removes rows from", async () => {
     const session = postgres(database.dispatcherUrl, { max: 1, prepare: false });
     try {
-      await expect(session`select count(*) from handoff.captures`).rejects.toThrow(/permission/i);
-      await expect(session`select count(*) from handoff.media_assets`).rejects.toThrow(
+      // Milestone 5 gave this credential the deletion capability the data contract reserves for
+      // it, and nothing more. `children` is not on the list: a purge marks the child row through
+      // the API credential and only ever deletes the rows that hang off it.
+      await expect(session`select count(*) from handoff.children`).rejects.toThrow(/permission/i);
+      await expect(session`select count(*) from handoff.users`).rejects.toThrow(/permission/i);
+
+      // Reach over the purge tables is still one workspace at a time: with no tenant context set,
+      // the policy matches nothing, so a credential that skipped the transaction reads nothing.
+      const visible = await session`select count(*)::int as count from handoff.captures`;
+      expect(visible[0]?.count).toBe(0);
+
+      // It removes rows; it never writes them. The grant stops this before the policy has to.
+      await expect(session`update handoff.captures set status = 'cancelled'`).rejects.toThrow(
         /permission/i,
       );
-      await expect(session`select count(*) from handoff.children`).rejects.toThrow(/permission/i);
     } finally {
       await session.end();
     }

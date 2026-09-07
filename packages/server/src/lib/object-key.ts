@@ -65,6 +65,14 @@ export function workspaceObjectPrefix(workspaceId: string): string {
   return `${workspaceId}/`;
 }
 
+/** Every object belonging to one child, which purge verification lists. */
+export function childObjectPrefix(workspaceId: string, childId: string): string {
+  if (!UUID.test(workspaceId) || !UUID.test(childId)) {
+    throw new Error("object key parts must be UUIDs");
+  }
+  return `${workspaceId}/${childId}/`;
+}
+
 /**
  * The asset id a key was generated for, or null for a key this server did not build. Cleanup uses
  * it to tell an orphaned object from one whose row simply has not been read yet.

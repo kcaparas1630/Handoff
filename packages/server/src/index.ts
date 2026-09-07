@@ -44,7 +44,7 @@ export { serverEnvSchema } from "./schemas/server-env";
 export type { PiiKeyProvider, ServerEnv } from "./types/server-env";
 
 export { createRequestDeps, createServerRuntime, createWorkerRuntime } from "./runtime";
-export type { ServerRuntime, ServiceDeps, WorkerRuntime } from "./types/runtime";
+export type { RuntimeLimits, ServerRuntime, ServiceDeps, WorkerRuntime } from "./types/runtime";
 
 export { createSupabaseStorage } from "./storage/supabase-storage";
 export type {
@@ -70,10 +70,39 @@ export type { ProviderErrorCode } from "./lib/provider-error";
 export {
   assetIdFromObjectKey,
   buildNormalizedImageKey,
+  childObjectPrefix,
   buildObjectKey,
   objectExtensionForMime,
   workspaceObjectPrefix,
 } from "./lib/object-key";
+
+export { createLogger, isAllowedLogField } from "./observability/logger";
+export {
+  createMetrics,
+  formatSnapshotLine,
+  recordStorageLevels,
+  startMetricsDump,
+  AUDIO_SECONDS_COUNTER,
+  TOKENS_IN_COUNTER,
+  TOKENS_OUT_COUNTER,
+} from "./observability/metrics";
+export type {
+  LogFields,
+  LogLevel,
+  Logger,
+  LoggerOptions,
+  MetricLabels,
+  MetricsRegistry,
+  MetricsSnapshot,
+} from "./types/observability";
+export {
+  estimateProviderSpendUsd,
+  PROVIDER_RATES,
+  ANTHROPIC_INPUT_USD_PER_MTOK,
+  ANTHROPIC_OUTPUT_USD_PER_MTOK,
+  DEEPGRAM_PLACEHOLDER_USD_PER_AUDIO_SECOND,
+} from "./lib/provider-rates";
+export type { ProviderRates, ProviderUsageTotals } from "./lib/provider-rates";
 
 export { createJobRunner } from "./jobs/runner";
 export { processCapture } from "./jobs/process-capture";
@@ -81,6 +110,9 @@ export { reconcileClerk, scheduleReconciliation } from "./jobs/reconcile-clerk";
 export { cleanupAudio, scheduleAudioCleanup } from "./jobs/cleanup-audio";
 export { cleanupUploads, scheduleUploadCleanup } from "./jobs/cleanup-uploads";
 export { validateMedia } from "./jobs/validate-media";
+export { purgeChild, purgeChildData } from "./jobs/purge-child";
+export { purgeWorkspace } from "./jobs/purge-workspace";
+export { rotateDataKeys } from "./jobs/rotate-data-keys";
 export { inspectMedia, isRejected } from "./media/inspect";
 export type { InspectedMedia, MediaInspection, MediaRejection } from "./media/inspect";
 export { normalizeImage, NORMALIZED_MAX_EDGE, NORMALIZED_MIME } from "./media/normalize-image";
@@ -152,7 +184,10 @@ export {
   cleanupAudioDedupeKey,
   cleanupUploadsDedupeKey,
   processCaptureDedupeKey,
+  purgeChildDedupeKey,
+  purgeWorkspaceDedupeKey,
   reconcileClerkDedupeKey,
+  rotateDataKeysDedupeKey,
   validateMediaDedupeKey,
 } from "./services/job-keys";
 export { confirmCapture } from "./services/capture-confirmation";
@@ -161,6 +196,27 @@ export { endCare, listCare, startCare } from "./services/care";
 export { createBrief, getBrief } from "./services/handoffs";
 export { acknowledgeBrief } from "./services/handoff-acknowledgement";
 export { getOverview } from "./services/overview";
+export { deleteChild, deleteWorkspace } from "./services/deletion";
+export type { ChildDeletionResult, WorkspaceDeletionResult } from "./services/deletion";
+export { updateSelf } from "./services/self";
+export {
+  assertAudioQuota,
+  assertCaptureQuota,
+  assertExtractionBudget,
+  BudgetExceededError,
+  recordProviderUsage,
+  startOfUtcDay,
+  utcDay,
+} from "./services/quotas";
+export {
+  convertEnvelopeBatch,
+  retireWorkspaceKeyIfUnused,
+  retireWorkspaceKeysIfDue,
+  rewrapDataKeys,
+  rotateWorkspaceContentKey,
+  ROTATABLE_TABLES,
+} from "./services/key-rotation";
+export { redactedBriefSnapshot } from "./lib/redacted-snapshot";
 export { handleClerkWebhook } from "./services/clerk-webhooks";
 export type { WebhookOutcome } from "./services/clerk-webhooks";
 export {
@@ -173,6 +229,11 @@ export {
   encryptEventPayload,
   encryptRevisionSnapshot,
 } from "./security/journal-fields";
+export {
+  CHILD_PROFILE_TOMBSTONE,
+  decryptChildProfileEnvelope,
+  encryptChildTombstone,
+} from "./security/profile-fields";
 export {
   childProfilePayloadSchema,
   idempotentResponsePayloadSchema,

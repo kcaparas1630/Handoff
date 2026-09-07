@@ -23,6 +23,7 @@ import type { ServiceDeps } from "../../packages/server/src/types/runtime";
 import { createFakeClerkGateway } from "./support/fake-clerk-gateway";
 import type { TestDatabase } from "./support/test-database";
 import { createTestDatabase, missingDatabaseUrlMessage } from "./support/test-database";
+import { testObservability } from "./support/observability";
 
 const describeIntegration = process.env.DATABASE_URL ? describe : describe.skip;
 if (!process.env.DATABASE_URL)
@@ -93,6 +94,7 @@ describeIntegration("personal data at rest", () => {
       invitationRedirectUrl: "https://handoff.test/accept-invitation",
       storage: null,
       jobsDb: null,
+      ...testObservability(),
       requestId: randomUUID(),
       now: () => new Date(),
     };

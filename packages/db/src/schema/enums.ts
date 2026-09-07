@@ -138,6 +138,7 @@ export const jobKind = handoffSchema.enum("job_kind", [
   "cleanup_uploads",
   "purge_child",
   "purge_workspace",
+  "rotate_data_keys",
 ]);
 
 export const jobStatus = handoffSchema.enum("job_status", [

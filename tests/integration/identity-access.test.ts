@@ -26,6 +26,7 @@ import type { FakeClerkGateway } from "./support/fake-clerk-gateway";
 import { createFakeClerkGateway } from "./support/fake-clerk-gateway";
 import type { TestDatabase } from "./support/test-database";
 import { createTestDatabase, missingDatabaseUrlMessage } from "./support/test-database";
+import { testObservability } from "./support/observability";
 
 const describeIntegration = process.env.DATABASE_URL ? describe : describe.skip;
 if (!process.env.DATABASE_URL)
@@ -83,6 +84,7 @@ describeIntegration("identity and access", () => {
       invitationRedirectUrl: "https://handoff.test/accept-invitation",
       storage: null,
       jobsDb: null,
+      ...testObservability(),
       requestId: randomUUID(),
       now: () => new Date(),
     };

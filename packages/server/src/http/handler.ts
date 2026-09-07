@@ -35,6 +35,13 @@ function readIdempotencyKey(request: Request, required: boolean): string | null 
 }
 
 export function createHandler({ runtime }: { runtime: ServerRuntime }) {
+  /** Operation and status only. A path segment can be an identifier, so the route is not a label. */
+  function record(operation: string, status: number, durationMs: number): void {
+    const labels = { operation, status: String(status) };
+    runtime.metrics.incrementCounter("api_requests", labels);
+    runtime.metrics.observeDuration("api_request_duration_ms", durationMs, labels);
+  }
+
   async function resolveUser(request: Request): Promise<AuthenticatedUser> {
     const { clerkUserId } = await runtime.clerk.verifySessionToken(readBearerToken(request));
     const user = await withIdentityTransaction(runtime.db, {}, (tx) =>
@@ -67,6 +74,7 @@ export function createHandler({ runtime }: { runtime: ServerRuntime }) {
       run: (context: HandlerContext<Mode>) => Promise<Response>,
     ): Promise<Response> {
       const requestId = randomUUID();
+      const startedAt = Date.now();
       try {
         const auth = await resolveAuth(request, options.auth);
         const idempotencyKey = readIdempotencyKey(request, options.idempotent === true);
@@ -83,9 +91,11 @@ export function createHandler({ runtime }: { runtime: ServerRuntime }) {
         headers.set("X-Request-Id", requestId);
         // Response headers are immutable, so the JSON payload is copied into a new response.
         const body = EMPTY_BODY_STATUSES.has(response.status) ? undefined : await response.text();
+        record(options.operation, response.status, Date.now() - startedAt);
         return new Response(body, { status: response.status, headers });
       } catch (error) {
-        const failure = toErrorResponse(error, requestId);
+        const failure = toErrorResponse(error, requestId, runtime.logger);
+        record(options.operation, failure.status, Date.now() - startedAt);
         // The envelope already carries the id; the header lets a proxy or client log correlate
         // a failure without reading a body that may describe personal data.
         failure.headers.set("X-Request-Id", requestId);

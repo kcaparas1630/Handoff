@@ -20,6 +20,8 @@ Drizzle numbers migrations from `0000`. The roadmap names them from `0001`.
 | `0004_media_and_jobs.sql` | `0004_media_and_jobs.sql` | Media assets and the durable job queue |
 | `0005_media_and_jobs_access.sql` | — | Grants, tenant policy for media, and the dispatcher role and queue policies |
 | `0006_cleanup_uploads_job.sql` | — | Adds the `cleanup_uploads` job kind for the milestone 4 upload and orphan-object sweep |
+| `0007_purge_quotas_and_rotation.sql` | — | The `rotate_data_keys` job kind, the `provider_usage` spend counters, and `workspaces.deleted_at` |
+| `0008_purge_access.sql` | — | Grants and policies for `provider_usage`, and the dispatcher's deletion capability |
 
 `0000_identity.sql` is generated, then hand-reordered so tables are created in dependency order
 (`users` and `workspaces`, then `data_keys`, then children, then invitations) and so the unique
@@ -57,6 +59,16 @@ migrations.
 which PostgreSQL 12 and later accept inside a transaction as long as the new value is not used in
 the same transaction; nothing else in the file reads it.
 
+`0007_purge_quotas_and_rotation.sql` is generated and renamed, with a comment header added by hand.
+It carries another `ALTER TYPE … ADD VALUE`, under the same rule: nothing in the file uses the new
+`rotate_data_keys` value. `provider_usage` holds numbers only — tokens in, tokens out, and audio
+seconds per workspace per UTC day — which is what the extraction spend cap reads before it lets a
+model call happen. `workspaces.deleted_at` exists because the scope-key retention window has to be
+measured from when deletion was *requested*; `updated_at` moves whenever a later purge stage touches
+the row, so it cannot answer that question.
+
+`0008_purge_access.sql` is written by hand for the same reason as the other access migrations.
+
 ## Tenant-scoped and identity-scoped tables
 
 Tenant-scoped tables have row-level security enabled and forced, plus one policy for
@@ -87,7 +99,7 @@ a second `NOLOGIN` role, `handoff_dispatcher`, and splits the queue by role:
 
 | Role | Grants on `handoff.jobs` | Policy |
 | --- | --- | --- |
-| `handoff_dispatcher` | `SELECT, INSERT, UPDATE` | `jobs_dispatcher_access`: every row, no tenant filter |
+| `handoff_dispatcher` | `SELECT, INSERT, UPDATE, DELETE` | `jobs_dispatcher_access`: every row, no tenant filter |
 | `handoff_api` | `SELECT, INSERT` | `jobs_api_tenant_read` and `jobs_api_tenant_insert`, both against `handoff.workspace_id` |
 
 The queue is deliberately global. Reconcile and maintenance jobs have no workspace at all, and a
@@ -100,6 +112,33 @@ using the workspace id from the trusted job row.
 `withJobTransaction` in `tenant-transaction.ts` is a plain `db.transaction` with no `set_config`,
 because there is no context to set; the reach is the credential. Run it on
 `DATABASE_JOB_DISPATCH_URL`.
+
+## The deletion capability
+
+Data contract section 5 also says "purge has a separately constrained maintenance capability".
+`0008_purge_access.sql` makes that the dispatcher credential, and nothing else: it is the only role
+in the database holding `DELETE` on any application table. The API role still holds none, so a
+mobile request can mark a child or a workspace inaccessible and enqueue the purge, and only a
+claimed job can remove a row.
+
+The dispatcher's reach over those tables is still one workspace at a time. Each purge table carries
+a `*_dispatcher_purge` policy against the same transaction-local `handoff.workspace_id` the API
+policies read, so the purge job opens a *tenant* transaction on the dispatch connection using the
+workspace id from the trusted job row. Every policy is `WITH CHECK (false)`: this credential removes
+rows, never writes them, even if a grant were widened by mistake.
+
+| Table | Dispatcher grants | Why |
+| --- | --- | --- |
+| `event_revisions`, `events`, `captures`, `media_assets` | `SELECT, DELETE` | The child's journal and its uploads |
+| `care_sessions`, `handoff_cursors`, `child_caregivers`, `invitation_child_grants` | `SELECT, DELETE` | Everything that hangs off a child |
+| `handoff_briefs`, `invitation_intents`, `workspace_memberships` | `SELECT, DELETE` | Workspace purge only; a child purge redacts briefs instead |
+| `idempotency_requests` | `SELECT, DELETE` | Retained responses are encrypted copies of DTOs. Identity scoped, so no policy applies and the scope column is the filter |
+| `jobs` | adds `DELETE` | A purged child's queue rows name captures and assets that are about to stop existing |
+
+`children` is deliberately **not** on that list. A purge marks the child row through the API
+credential and leaves it as a `deleted` tombstone with an encrypted empty profile, because the
+retained redacted briefs and the audit log still point at it. Deleting rows that hang off a child is
+the capability; deleting the child's identity is not.
 
 `handoff_api` is deliberately *not* granted `UPDATE` on `jobs`, which is the one place these
 migrations narrow what the milestone brief listed. With `UPDATE` the mobile API credential could
@@ -160,7 +199,8 @@ transaction before any membership or workspace read.
 - **`audit_log` and `webhook_inbox` have no foreign keys.** An audit record must survive the purge
   of what it describes, and inbox rows reference provider IDs rather than local rows.
 - **`audit_log` is granted `SELECT, INSERT` only.** Every other table the API touches is granted
-  `SELECT, INSERT, UPDATE`. No table grants `DELETE`; deletion arrives with the milestone 5 purge.
+  `SELECT, INSERT, UPDATE`. The API role still grants `DELETE` on nothing at all; milestone 5 gave
+  that capability to the dispatcher credential instead (see "The deletion capability").
 - **Index names** are explicit (`children_workspace_status_idx`,
   `child_caregivers_user_status_child_idx`, `workspace_memberships_user_status_idx`) so the
   required indexes in section 6 are greppable.
@@ -193,6 +233,12 @@ transaction before any membership or workspace read.
   object is gone. `markAssetDeleted` keeps whichever marker is further along, so the two paths
   cannot erase each other. Decrementing `storage_used_bytes` when an already-settled asset is
   deleted has no repository yet; it belongs with the milestone 5 purge capability.
+- **`provider_usage` is a counter table, not a ledger.** One row per workspace per UTC day holding
+  three totals. It records no capture id, no user, and no time of day, because the only question it
+  answers is "has this workspace spent its budget today".
+- **Re-encryption does not bump a row's `version` or `updated_at`.** Rotating a data key is
+  maintenance, not an edit: a client holding an expected version must not lose its next write to a
+  background job, and no journal sequence is allocated.
 - **Quota moves do not bump `workspaces.version` or `updated_at`.** Same reasoning as the child
   journal counter: reserving bytes is not a profile edit, and bumping the version would break
   optimistic concurrency for a caller renaming the workspace.

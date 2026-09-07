@@ -24,6 +24,8 @@
     "dev:worker": "pnpm --filter @handoff/worker start",
     "eval:extraction": "tsx scripts/evaluate-extraction.ts",
     "storage:provision": "tsx scripts/provision-storage.ts",
+    "verify:purge": "tsx scripts/verify-purge.ts",
+    "verify:restore": "tsx scripts/verify-encrypted-restore.ts",
     "seed:pilot": "tsx scripts/seed-pilot.ts",
     "measure:pilot": "tsx scripts/measure-pilot.ts",
     "build:api": "pnpm --filter @handoff/api export"

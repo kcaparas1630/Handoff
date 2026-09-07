@@ -67,6 +67,10 @@ export function createJobRunner({
     while (inFlight.size < concurrency) {
       const job = await claim();
       if (job === null) break;
+      // Queue age at claim time is what a stalled queue shows up as (docs/runbook.md).
+      runtime.metrics.recordQueueAge(
+        Math.max(0, (runtime.now().getTime() - job.availableAt.getTime()) / 1000),
+      );
       started += 1;
       const running = run(job).finally(() => inFlight.delete(running));
       inFlight.add(running);
@@ -93,7 +97,7 @@ export function createJobRunner({
     try {
       const outcome = await execute(handler, buildContext(runtime, job, leaseToken));
       await record(job, leaseToken, outcome);
-      logJob(job, outcome, Date.now() - startedAt);
+      reportJob(runtime, job, outcome, Date.now() - startedAt);
     } finally {
       clearInterval(heartbeat);
     }
@@ -133,7 +137,9 @@ export function createJobRunner({
           try {
             await runOnce();
           } catch (error) {
-            logRunnerError(error);
+            runtime.logger.error("job_runner_error", {
+              errorCode: error instanceof Error ? error.name : "UnknownError",
+            });
           }
           if (!stopping) await sleep(pollIntervalMs);
         }
@@ -182,29 +188,22 @@ async function execute(handler: JobHandler, context: JobContext): Promise<JobOut
   }
 }
 
-/** Job id, kind, outcome, and duration only. A transcript never reaches a log. */
-function logJob(job: JobRow, outcome: JobOutcome, durationMs: number): void {
-  const detail =
-    outcome.status === "completed"
-      ? { result: "completed" }
-      : { result: "failed", errorCode: outcome.errorCode, retryable: outcome.retryable };
-  console.info(
-    JSON.stringify({
-      event: "job",
-      jobId: job.id,
-      kind: job.kind,
-      attempts: job.attempts,
-      durationMs,
-      ...detail,
-    }),
-  );
-}
-
-function logRunnerError(error: unknown): void {
-  console.error(
-    JSON.stringify({
-      event: "job_runner_error",
-      error: error instanceof Error ? error.name : "UnknownError",
-    }),
-  );
+/** Job id, kind, outcome, and duration only. A transcript never reaches a log or a label. */
+function reportJob(
+  runtime: WorkerRuntime,
+  job: JobRow,
+  outcome: JobOutcome,
+  durationMs: number,
+): void {
+  const labels = { jobKind: job.kind, status: outcome.status };
+  runtime.metrics.incrementCounter("jobs", labels);
+  runtime.metrics.observeDuration("job_duration_ms", durationMs, labels);
+  runtime.logger.info("job", {
+    jobId: job.id,
+    jobKind: job.kind,
+    count: job.attempts,
+    durationMs,
+    status: outcome.status,
+    ...(outcome.status === "completed" ? {} : { errorCode: outcome.errorCode }),
+  });
 }

@@ -25,6 +25,7 @@ import { accessContextOf } from "../lib/access-context";
 import { inTenantTransaction } from "../lib/in-tenant-transaction";
 import { toMediaAssetDto } from "../lib/media-dto";
 import { buildObjectKey } from "../lib/object-key";
+import { recordStorageLevels } from "../observability/metrics";
 import { attachmentLimitsFor, attachmentLimitsForAsset } from "../media/lib/attachment-limits";
 import { loadAuthorizedCapture } from "./captures";
 import { UPLOAD_AUTHORIZATION_SECONDS, requireStorage } from "./capture-uploads";
@@ -117,6 +118,7 @@ export async function createAssetUpload({
         storage: ["Workspace storage budget exceeded"],
       });
     }
+    recordStorageLevels(deps.metrics, reserved);
 
     // An allocation is what creates an object that can be abandoned, so the sweep that purges it
     // starts here. The key carries the day, so every later allocation schedules nothing and the

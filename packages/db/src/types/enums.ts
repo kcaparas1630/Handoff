@@ -49,6 +49,7 @@ export type JobKind =
   | "cleanup_audio"
   | "cleanup_uploads"
   | "purge_child"
-  | "purge_workspace";
+  | "purge_workspace"
+  | "rotate_data_keys";
 
 export type JobStatus = "queued" | "leased" | "succeeded" | "failed" | "cancelled";

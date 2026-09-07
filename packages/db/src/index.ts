@@ -25,6 +25,9 @@ export * as overviewRepository from "./repositories/overview";
 export * as mediaRepository from "./repositories/media";
 export * as storageQuotaRepository from "./repositories/storage-quota";
 export * as jobsRepository from "./repositories/jobs";
+export * as providerUsageRepository from "./repositories/provider-usage";
+export * as purgeRepository from "./repositories/purge";
+export * as envelopeRepository from "./repositories/envelopes";
 export { createDataKeyStore } from "./repositories/data-keys";
 
 export type { HandoffDatabase, HandoffTransaction } from "./types/database";
@@ -120,6 +123,9 @@ export type {
   NewMediaAsset,
   WorkspaceStorageRow,
 } from "./types/media";
+export type { ProviderUsageDelta, ProviderUsageRow } from "./types/provider-usage";
+export type { ChildScope, PurgeCounts } from "./types/purge";
+export type { EnvelopeRef, RotatableTable } from "./types/envelopes";
 export type {
   ClaimJobInput,
   EnqueueJobInput,

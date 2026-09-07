@@ -119,3 +119,43 @@ export async function endAllSessionsForUserInWorkspace(
     )
     .returning();
 }
+
+/** Child deletion closes every open session for that child, whoever declared it. */
+export async function endAllSessionsForChild(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; childId: string; endReason: CareEndReason },
+): Promise<CareSessionRow[]> {
+  return tx
+    .update(careSessions)
+    .set({
+      endedAt: sql`now()`,
+      endReason: input.endReason,
+      updatedAt: sql`now()`,
+      version: sql`${careSessions.version} + 1`,
+    })
+    .where(
+      and(
+        eq(careSessions.workspaceId, input.workspaceId),
+        eq(careSessions.childId, input.childId),
+        isNull(careSessions.endedAt),
+      ),
+    )
+    .returning();
+}
+
+/** Workspace deletion closes every open session in the workspace in one statement. */
+export async function endAllSessionsInWorkspace(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; endReason: CareEndReason },
+): Promise<CareSessionRow[]> {
+  return tx
+    .update(careSessions)
+    .set({
+      endedAt: sql`now()`,
+      endReason: input.endReason,
+      updatedAt: sql`now()`,
+      version: sql`${careSessions.version} + 1`,
+    })
+    .where(and(eq(careSessions.workspaceId, input.workspaceId), isNull(careSessions.endedAt)))
+    .returning();
+}

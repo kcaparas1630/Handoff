@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { childCaregivers, children, workspaceMemberships } from "../schema";
 import type {
   ChildCaregiverRow,
@@ -125,6 +125,62 @@ export async function updateChildProfile(
     )
     .returning();
   return row ?? null;
+}
+
+/**
+ * Marks a child inaccessible. `authorizeChild` only accepts an `active` child, so this alone
+ * removes it from every read path; the purge job then removes what it left behind. Returns null
+ * when the child is already deleting or deleted, which is what makes a repeated request a no-op.
+ */
+export async function markChildDeleting(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; childId: string },
+): Promise<ChildRow | null> {
+  const [row] = await tx
+    .update(children)
+    .set({ status: "deleting", updatedAt: sql`now()`, version: sql`${children.version} + 1` })
+    .where(
+      and(
+        eq(children.workspaceId, input.workspaceId),
+        eq(children.id, input.childId),
+        inArray(children.status, ["active", "archived"]),
+      ),
+    )
+    .returning();
+  return row ?? null;
+}
+
+/**
+ * The terminal state of a purge. The row survives with an encrypted tombstone in place of its
+ * profile, because retained redacted briefs and the audit log still point at this child.
+ */
+export async function markChildDeleted(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; childId: string; profileCiphertext: unknown },
+): Promise<ChildRow | null> {
+  const [row] = await tx
+    .update(children)
+    .set({
+      status: "deleted",
+      profileCiphertext: input.profileCiphertext,
+      updatedAt: sql`now()`,
+      version: sql`${children.version} + 1`,
+    })
+    .where(and(eq(children.workspaceId, input.workspaceId), eq(children.id, input.childId)))
+    .returning();
+  return row ?? null;
+}
+
+/** Every child of a workspace whatever its status, which workspace deletion and rotation need. */
+export async function listAllChildrenForWorkspace(
+  tx: HandoffTransaction,
+  workspaceId: string,
+): Promise<ChildRow[]> {
+  return tx
+    .select()
+    .from(children)
+    .where(eq(children.workspaceId, workspaceId))
+    .orderBy(children.createdAt, children.id);
 }
 
 export async function upsertChildCaregiver(

@@ -141,6 +141,58 @@ export async function markUserDeleted(
   return row ?? null;
 }
 
+/** Records which processing-notice version this caller accepted, and when (architecture §9). */
+export async function updateProcessingNotice(
+  tx: HandoffTransaction,
+  input: { userId: string; processingNoticeVersion: string; acceptedAt: Date },
+): Promise<UserRow | null> {
+  const [row] = await tx
+    .update(users)
+    .set({
+      processingNoticeVersion: input.processingNoticeVersion,
+      processingNoticeAcceptedAt: input.acceptedAt,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(users.id, input.userId))
+    .returning();
+  return row ?? null;
+}
+
+/**
+ * Marks a workspace inaccessible and stamps when deletion was requested. `deleted_at` is set once
+ * and never moved, because the scope-key retention window is measured from it. Returns null when
+ * the workspace is already deleting or deleted, which makes a repeated request a no-op.
+ */
+export async function markWorkspaceDeleting(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; deletedAt: Date },
+): Promise<WorkspaceRow | null> {
+  const [row] = await tx
+    .update(workspaces)
+    .set({
+      status: "deleting",
+      deletedAt: input.deletedAt,
+      updatedAt: sql`now()`,
+      version: sql`${workspaces.version} + 1`,
+    })
+    .where(and(eq(workspaces.id, input.workspaceId), eq(workspaces.status, "active")))
+    .returning();
+  return row ?? null;
+}
+
+/** Terminal state of a workspace purge. The row survives so its key records stay resolvable. */
+export async function markWorkspaceDeleted(
+  tx: HandoffTransaction,
+  workspaceId: string,
+): Promise<WorkspaceRow | null> {
+  const [row] = await tx
+    .update(workspaces)
+    .set({ status: "deleted", updatedAt: sql`now()`, version: sql`${workspaces.version} + 1` })
+    .where(and(eq(workspaces.id, workspaceId), eq(workspaces.status, "deleting")))
+    .returning();
+  return row ?? null;
+}
+
 /** Companion of updateUserProfile for the workspace scope's first key. */
 export async function updateWorkspaceProfile(
   tx: HandoffTransaction,

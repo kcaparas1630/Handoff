@@ -24,6 +24,8 @@ export interface WorkspaceRow {
   profileCiphertext: unknown;
   timezone: string;
   status: "active" | "deleting" | "deleted";
+  /** When deletion was requested. The scope-key retention window is measured from it. */
+  deletedAt: Date | null;
   storageBudgetBytes: number;
   storageReservedBytes: number;
   storageUsedBytes: number;

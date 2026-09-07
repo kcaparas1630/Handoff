@@ -4,6 +4,8 @@ import { createDataKeyStore, createDbClient } from "@handoff/db";
 import { createAnthropicExtraction } from "./ai/anthropic";
 import { createClerkGateway } from "./auth/clerk";
 import { requireWorkerEnv } from "./config/env";
+import { createLogger } from "./observability/logger";
+import { createMetrics } from "./observability/metrics";
 import { createDataKeyService } from "./security/encryption/data-keys";
 import { createDevelopmentKeyWrapper } from "./security/encryption/development-key-wrapper";
 import { createKmsKeyWrapper } from "./security/encryption/kms-key-wrapper";
@@ -58,7 +60,16 @@ function createStorage(env: ServerEnv): ObjectStorage | null {
   });
 }
 
-export function createServerRuntime(env: ServerEnv): ServerRuntime {
+function limitsFrom(env: ServerEnv) {
+  return {
+    capturesPerUserPerDay: env.quotaCapturesPerUserPerDay,
+    audioSecondsPerWorkspacePerDay: env.quotaAudioSecondsPerWorkspacePerDay,
+    extractionUsdPerWorkspacePerDay: env.quotaExtractionUsdPerWorkspacePerDay,
+    workspaceKeyRetentionDays: env.workspaceKeyRetentionDays,
+  };
+}
+
+export function createServerRuntime(env: ServerEnv, service = "api"): ServerRuntime {
   const client = createDbClient({ url: env.databaseUrl, maxConnections: MAX_DB_CONNECTIONS });
   const keyClient = createDbClient({ url: env.databaseUrl, maxConnections: MAX_KEY_CONNECTIONS });
   const jobsClient =
@@ -81,6 +92,9 @@ export function createServerRuntime(env: ServerEnv): ServerRuntime {
     invitationRedirectUrl: env.invitationRedirectUrl,
     storage: createStorage(env),
     jobsDb: jobsClient?.db ?? null,
+    limits: limitsFrom(env),
+    metrics: createMetrics(),
+    logger: createLogger({ service }),
     now: () => new Date(),
     close: async () => {
       await client.close();
@@ -96,7 +110,7 @@ export function createServerRuntime(env: ServerEnv): ServerRuntime {
  */
 export function createWorkerRuntime(env: ServerEnv): WorkerRuntime {
   const worker = requireWorkerEnv(env);
-  const runtime = createServerRuntime(env);
+  const runtime = createServerRuntime(env, "worker");
   if (runtime.storage === null || runtime.jobsDb === null) {
     // requireWorkerEnv already proved both are configured; this keeps the types honest.
     throw new Error("worker runtime requires storage and the job dispatch database");
@@ -127,6 +141,9 @@ export function createRequestDeps(runtime: ServerRuntime, requestId: string): Se
     invitationRedirectUrl: runtime.invitationRedirectUrl,
     storage: runtime.storage,
     jobsDb: runtime.jobsDb,
+    limits: runtime.limits,
+    metrics: runtime.metrics,
+    logger: runtime.logger,
     now: runtime.now,
     requestId,
   };

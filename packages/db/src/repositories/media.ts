@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNotNull, lt, lte, ne, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, lt, lte, ne, notInArray, sql } from "drizzle-orm";
 import { captures, mediaAssets } from "../schema";
 import type { HandoffTransaction } from "../types/database";
 import type { MediaKind } from "../types/enums";
@@ -291,6 +291,43 @@ export async function listExpiredPendingAssets(
     )
     .orderBy(asc(mediaAssets.expiresAt), asc(mediaAssets.id))
     .limit(limit);
+}
+
+/**
+ * Audio seconds this workspace has already sent to transcription since an instant. An allocation
+ * that was never uploaded has no duration and therefore costs nothing; the caller adds the
+ * duration the current request declares before comparing against the daily cap.
+ */
+export async function sumAudioDurationMsSince(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; since: Date },
+): Promise<number> {
+  const [row] = await tx
+    .select({ total: sql<number>`coalesce(sum(${mediaAssets.durationMs}), 0)::bigint` })
+    .from(mediaAssets)
+    .where(
+      and(
+        eq(mediaAssets.workspaceId, input.workspaceId),
+        eq(mediaAssets.kind, "audio"),
+        gte(mediaAssets.createdAt, input.since),
+      ),
+    );
+  return Number(row?.total ?? 0);
+}
+
+/** Every asset of one child, in creation order, for the purge's object-deletion stage. */
+export async function listAssetsForChild(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; childId: string; limit: number },
+): Promise<MediaAssetRow[]> {
+  return tx
+    .select()
+    .from(mediaAssets)
+    .where(
+      and(eq(mediaAssets.workspaceId, input.workspaceId), eq(mediaAssets.childId, input.childId)),
+    )
+    .orderBy(asc(mediaAssets.createdAt), asc(mediaAssets.id))
+    .limit(input.limit);
 }
 
 /** Raw audio is source material: it is deleted a fixed interval after its capture is confirmed. */

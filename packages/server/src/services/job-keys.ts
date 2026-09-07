@@ -29,3 +29,17 @@ export function cleanupAudioDedupeKey(workspaceId: string, day: Date): string {
 export function cleanupUploadsDedupeKey(workspaceId: string, day: Date): string {
   return `cleanup_uploads:${workspaceId}:${day.toISOString().slice(0, 10)}`;
 }
+
+/** One purge per child, so a repeated delete request schedules the same unit of work. */
+export function purgeChildDedupeKey(childId: string): string {
+  return `purge_child:${childId}`;
+}
+
+export function purgeWorkspaceDedupeKey(workspaceId: string): string {
+  return `purge_workspace:${workspaceId}`;
+}
+
+/** Keyed by the successor key, so each rotation gets its own re-encryption pass. */
+export function rotateDataKeysDedupeKey(keyId: string): string {
+  return `rotate_data_keys:${keyId}`;
+}

@@ -6,6 +6,9 @@ import { createJobRunner } from "../../../packages/server/src/jobs/runner";
 import { cleanupAudio } from "../../../packages/server/src/jobs/cleanup-audio";
 import { cleanupUploads } from "../../../packages/server/src/jobs/cleanup-uploads";
 import { processCapture } from "../../../packages/server/src/jobs/process-capture";
+import { purgeChild } from "../../../packages/server/src/jobs/purge-child";
+import { purgeWorkspace } from "../../../packages/server/src/jobs/purge-workspace";
+import { rotateDataKeys } from "../../../packages/server/src/jobs/rotate-data-keys";
 import { reconcileClerk } from "../../../packages/server/src/jobs/reconcile-clerk";
 import { validateMedia } from "../../../packages/server/src/jobs/validate-media";
 import { createFakeExtraction } from "./fake-extraction";
@@ -60,6 +63,11 @@ export function createJobHarness(
     invitationRedirectUrl: harness.deps.invitationRedirectUrl,
     storage,
     jobsDb: dispatcher.db,
+    // The worker shares the harness's limits, metrics, and logger so a test can assert on both
+    // sides of a job: the request that queued it and the handler that ran it.
+    limits: harness.deps.limits,
+    metrics: harness.deps.metrics,
+    logger: harness.deps.logger,
     transcription,
     extraction,
     now: harness.deps.now,
@@ -74,6 +82,9 @@ export function createJobHarness(
       reconcile_clerk: reconcileClerk,
       cleanup_audio: cleanupAudio,
       cleanup_uploads: cleanupUploads,
+      purge_child: purgeChild,
+      purge_workspace: purgeWorkspace,
+      rotate_data_keys: rotateDataKeys,
     },
     concurrency: options.concurrency ?? 2,
     leaseMs: options.leaseMs ?? 30_000,

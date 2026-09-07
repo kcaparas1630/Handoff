@@ -40,6 +40,8 @@ export interface ClerkGateway {
     clerkInvitationId: string;
   }): Promise<void>;
   removeOrganizationMember(input: { clerkOrgId: string; clerkUserId: string }): Promise<void>;
+  /** Workspace deletion. Called after the local writes commit, and reconciled if it fails. */
+  deleteOrganization(input: { clerkOrgId: string }): Promise<void>;
   verifyWebhook(request: Request): Promise<WebhookEvent>;
 }
 

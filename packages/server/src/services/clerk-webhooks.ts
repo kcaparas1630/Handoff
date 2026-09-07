@@ -2,6 +2,7 @@
 // against current provider state. Inbox rows keep provider identifiers only.
 import { z } from "zod";
 import {
+  careRepository,
   childrenRepository,
   identityRepository,
   infrastructureRepository,
@@ -12,6 +13,7 @@ import {
 import type { UserRow, WorkspaceRow } from "@handoff/db";
 import { ApiHttpError } from "../http/errors";
 import { mapClerkRoleToAppRole } from "../lib/map-clerk-role";
+import { encryptUserProfile } from "../security/profile-fields";
 import { applyAcceptedInvitation } from "./invitation-acceptance";
 import type { ServiceDeps } from "../types/runtime";
 
@@ -151,15 +153,41 @@ async function syncRevokedInvitation({
   return "processed";
 }
 
+/**
+ * Account deletion at the provider. Records the caller authored stay: the data contract says
+ * account deletion anonymizes attribution where records must be retained, so the row survives with
+ * an encrypted empty display name and every workspace it reached loses access at once. Voice
+ * recordings, drafts, and events belong to a workspace and are removed by its own deletion.
+ */
 async function applyUserDeleted(deps: ServiceDeps, clerkUserId: string): Promise<WebhookOutcome> {
   const user = await findLocalUser(deps, clerkUserId);
   if (user === null) return "ignored";
+  // Encrypted before the transaction opens: a key fetch must not be held under a write lock.
+  const profileCiphertext = await encryptUserProfile(deps.keys, user.id, null);
   const memberships = await withIdentityTransaction(deps.db, { userId: user.id }, async (tx) => {
     await identityRepository.markUserDeleted(tx, user.id);
+    await identityRepository.updateUserProfile(tx, { userId: user.id, profileCiphertext });
     return identityRepository.listActiveMembershipsForUser(tx, user.id);
   });
   for (const row of memberships) {
-    await revokeLocalMembership(deps, row.membership.workspaceId, user.id);
+    const workspaceId = row.membership.workspaceId;
+    await revokeLocalMembership(deps, workspaceId, user.id);
+    // Revocation closes that member's declared care, and nobody else's (data contract §4).
+    await withTenantTransaction(deps.db, { workspaceId }, async (tx) => {
+      await careRepository.endAllSessionsForUserInWorkspace(tx, {
+        workspaceId,
+        userId: user.id,
+        endReason: "membership_revoked",
+      });
+      await infrastructureRepository.insertAuditLog(tx, {
+        workspaceId,
+        actorUserId: null,
+        action: "user.anonymized",
+        entityType: "user",
+        entityId: user.id,
+        requestId: deps.requestId,
+      });
+    });
   }
   return "processed";
 }

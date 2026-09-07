@@ -3,7 +3,7 @@ export { users, workspaces, workspaceMemberships } from "./identity";
 export { dataKeys } from "./data-keys";
 export { children, childCaregivers } from "./children";
 export { invitationIntents, invitationChildGrants } from "./invitations";
-export { idempotencyRequests, webhookInbox, auditLog } from "./infrastructure";
+export { idempotencyRequests, webhookInbox, auditLog, providerUsage } from "./infrastructure";
 export { captures, events, eventRevisions } from "./journal";
 export { mediaAssets } from "./media";
 export { jobs } from "./jobs";

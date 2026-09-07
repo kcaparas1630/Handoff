@@ -164,3 +164,44 @@ export async function listBriefsForRecipient(
     .orderBy(desc(handoffBriefs.createdAt), desc(handoffBriefs.id))
     .limit(input.limit);
 }
+
+/** Every brief written for one child, whatever its recipient, for redaction during a purge. */
+export async function listBriefsForChild(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; childId: string; limit: number },
+): Promise<HandoffBriefRow[]> {
+  return tx
+    .select()
+    .from(handoffBriefs)
+    .where(
+      and(
+        eq(handoffBriefs.workspaceId, input.workspaceId),
+        eq(handoffBriefs.childId, input.childId),
+      ),
+    )
+    .orderBy(handoffBriefs.createdAt, handoffBriefs.id)
+    .limit(input.limit);
+}
+
+/**
+ * Replaces a brief's copied snapshot with an encrypted empty one and marks it redacted. The row
+ * stays because it is the record that this recipient acknowledged a handoff; its care content
+ * does not. The started session is released here too, since the purge removes that session.
+ */
+export async function redactBrief(
+  tx: HandoffTransaction,
+  input: { workspaceId: string; briefId: string; snapshotCiphertext: unknown },
+): Promise<HandoffBriefRow | null> {
+  const [row] = await tx
+    .update(handoffBriefs)
+    .set({
+      status: "redacted",
+      snapshotCiphertext: input.snapshotCiphertext,
+      startedSessionId: null,
+    })
+    .where(
+      and(eq(handoffBriefs.workspaceId, input.workspaceId), eq(handoffBriefs.id, input.briefId)),
+    )
+    .returning();
+  return row ?? null;
+}

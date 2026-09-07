@@ -1,7 +1,7 @@
 import { updateChildRequestSchema } from "@handoff/contracts";
 import {
-  ApiHttpError,
   createRequestDeps,
+  deleteChild,
   getChild,
   resolveChildWorkspace,
   updateChild,
@@ -49,19 +49,22 @@ export function PATCH(request: Request, params: Record<string, string>): Promise
   );
 }
 
-export function DELETE(request: Request): Promise<Response> {
+export function DELETE(request: Request, params: Record<string, string>): Promise<Response> {
   return getHandler().handle(
     request,
-    { auth: "required", operation: "children.delete" },
-    // The contract reserves this endpoint. Deleting the profile alone would leave stored objects
-    // and copied snapshots behind, so nothing is deleted until the milestone 5 purge job exists.
-    () =>
-      Promise.reject(
-        new ApiHttpError({
-          status: 501,
-          code: "internal",
-          message: "Child deletion arrives with the purge job in milestone 5",
-        }),
-      ),
+    { auth: "required", operation: "children.delete", idempotent: true },
+    async ({ auth, requestId }) => {
+      const childId = readIdParam(params, "childId");
+      // Idempotent by construction, and deliberately outside runIdempotent: this schedules durable
+      // work and cancels queue rows on another credential, so a retained response would claim an
+      // atomicity that does not exist. Repeating it returns the same 202.
+      const result = await deleteChild({
+        deps: createRequestDeps(getRuntime(), requestId),
+        actorUserId: auth.userId,
+        childId,
+      });
+      // 202: the records are already unreachable, the purge job removes them (data contract §8).
+      return Response.json(result, { status: 202 });
+    },
   );
 }

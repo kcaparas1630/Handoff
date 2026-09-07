@@ -72,11 +72,23 @@ AWS_REGION
 PII_DEV_WRAPPING_KEY_B64
 WORKER_CONCURRENCY
 WORKER_LEASE_SECONDS
+METRICS_FLUSH_SECONDS
+INTERNAL_METRICS_TOKEN
+QUOTA_CAPTURES_PER_USER_PER_DAY
+QUOTA_AUDIO_SECONDS_PER_WORKSPACE_PER_DAY
+QUOTA_EXTRACTION_USD_PER_WORKSPACE_PER_DAY
+WORKSPACE_KEY_RETENTION_DAYS
 ```
 
 These are application-selected environment names. Map the Supabase storage secret to the supported server SDK credential for the provisioned project. Distinct database URLs represent restricted runtime, migration, and dispatcher capabilities. Validate required configuration at startup; do not include secret values in client bundles, example files, error responses, or logs.
 
 `CLERK_AUTHORIZED_PARTIES` is the comma-separated allowlist of origins a session token may be presented from; leaving it unset skips that check and is only appropriate in local development. `WORKER_CONCURRENCY` and `WORKER_LEASE_SECONDS` bound how many jobs one worker claims at a time and how long a claim survives a crash; both have defaults, so the worker starts without them.
+
+`METRICS_FLUSH_SECONDS` is how often each process writes its metrics snapshot line; leaving
+`INTERNAL_METRICS_TOKEN` unset makes `GET /v1/internal/metrics` answer 404 rather than announce an
+endpoint nobody enabled. The three `QUOTA_*` settings and `WORKSPACE_KEY_RETENTION_DAYS` all have
+documented defaults, so a deployment starts without them; see [runbook](runbook.md) for the
+thresholds and the retention consequences.
 
 `PII_KEY_PROVIDER` selects managed KMS for production or the explicitly development-only wrapping adapter. `PII_KMS_KEY_ID` is a key reference, not key material. Prefer a scoped workload identity for AWS access. `PII_DEV_WRAPPING_KEY_B64` is only for local/synthetic tests and must be rejected in production; never commit its value.
 

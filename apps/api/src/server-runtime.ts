@@ -1,6 +1,11 @@
 // One process-lifetime runtime for every API route. It is built on first use so that
 // `expo export` can bundle these routes without any server configuration present.
-import { createHandler, createServerRuntime, loadServerEnv } from "@handoff/server";
+import {
+  createHandler,
+  createServerRuntime,
+  loadServerEnv,
+  startMetricsDump,
+} from "@handoff/server";
 import type { ServerEnv, ServerRuntime } from "@handoff/server";
 
 type Handler = ReturnType<typeof createHandler>;
@@ -16,7 +21,17 @@ export function getServerEnv(): ServerEnv {
 }
 
 export function getRuntime(): ServerRuntime {
-  runtime ??= createServerRuntime(getServerEnv());
+  if (runtime === null) {
+    const env = getServerEnv();
+    runtime = createServerRuntime(env);
+    // There is no metrics backend in the pilot: the snapshot is a JSON line the runbook reads.
+    // The timer is unref'd, so it never keeps a finished process alive.
+    startMetricsDump({
+      metrics: runtime.metrics,
+      service: "api",
+      intervalSeconds: env.metricsFlushSeconds,
+    });
+  }
   return runtime;
 }
 

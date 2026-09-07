@@ -50,6 +50,20 @@
       "when": 1788735341382,
       "tag": "0006_cleanup_uploads_job",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788738027120,
+      "tag": "0007_purge_quotas_and_rotation",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788738108256,
+      "tag": "0008_purge_access",
+      "breakpoints": true
     }
   ]
 }

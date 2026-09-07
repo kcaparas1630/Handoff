@@ -131,6 +131,10 @@ export function createClerkGateway({
       );
     },
 
+    async deleteOrganization({ clerkOrgId }): Promise<void> {
+      await callProvider(() => client.organizations.deleteOrganization(clerkOrgId));
+    },
+
     async verifyWebhook(request: Request): Promise<WebhookEvent> {
       try {
         return await verifyWebhook(request, { signingSecret: webhookSigningSecret });

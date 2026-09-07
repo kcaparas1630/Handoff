@@ -15,6 +15,7 @@ export type FakeClerkOperation =
   | "createOrganizationInvitation"
   | "revokeOrganizationInvitation"
   | "removeOrganizationMember"
+  | "deleteOrganization"
   | "verifyWebhook";
 
 export interface FakeClerkCall {
@@ -34,6 +35,8 @@ export interface FakeClerkInvitation {
 export interface FakeClerkGateway extends ClerkGateway {
   calls: FakeClerkCall[];
   invitations: FakeClerkInvitation[];
+  /** Organizations the server asked Clerk to delete, in order. */
+  deletedOrganizations: string[];
   setUser(clerkUserId: string, primaryEmail: string | null): void;
   setMembership(membership: ClerkMembership): void;
   deleteMembership(clerkOrgId: string, clerkUserId: string): void;
@@ -53,6 +56,7 @@ export function createFakeClerkGateway(): FakeClerkGateway {
   const failing = new Set<FakeClerkOperation>();
   const calls: FakeClerkCall[] = [];
   const invitations: FakeClerkInvitation[] = [];
+  const deletedOrganizations: string[] = [];
 
   function record(operation: FakeClerkOperation, input: unknown): void {
     calls.push({ operation, input });
@@ -62,6 +66,7 @@ export function createFakeClerkGateway(): FakeClerkGateway {
   return {
     calls,
     invitations,
+    deletedOrganizations,
 
     setUser(clerkUserId, primaryEmail) {
       users.set(clerkUserId, primaryEmail);
@@ -131,6 +136,15 @@ export function createFakeClerkGateway(): FakeClerkGateway {
     removeOrganizationMember({ clerkOrgId, clerkUserId }) {
       record("removeOrganizationMember", { clerkOrgId, clerkUserId });
       memberships.delete(membershipKey(clerkOrgId, clerkUserId));
+      return Promise.resolve();
+    },
+
+    deleteOrganization({ clerkOrgId }) {
+      record("deleteOrganization", { clerkOrgId });
+      deletedOrganizations.push(clerkOrgId);
+      for (const key of [...memberships.keys()]) {
+        if (key.startsWith(`${clerkOrgId}::`)) memberships.delete(key);
+      }
       return Promise.resolve();
     },
 

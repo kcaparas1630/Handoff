@@ -32,6 +32,7 @@ import {
   requireStorage,
 } from "./capture-uploads";
 import { processCaptureDedupeKey } from "./job-keys";
+import { assertAudioQuota, assertCaptureQuota } from "./quotas";
 import { resolveCaptureWorkspace, resolveChildWorkspace } from "./workspace-lookup";
 import type { ChildAuthorization } from "../types/authorization";
 import type { ScopedTransaction } from "../lib/in-tenant-transaction";
@@ -170,6 +171,16 @@ export async function createCapture({
     const context = accessContextOf(authorization.membership.appRole, authorization.permission);
     if (!canCreateCapture(context)) {
       throw ApiHttpError.forbidden("You can read this child's journal but not add to it");
+    }
+    // Quotas authorize the resource before anything is reserved, signed, or queued (§9).
+    await assertCaptureQuota({ deps, tx: scoped, workspaceId, userId: actorUserId });
+    if (input.audio !== undefined) {
+      await assertAudioQuota({
+        deps,
+        tx: scoped,
+        workspaceId,
+        seconds: input.audio.declaredDurationMs / 1000,
+      });
     }
     await assertOwnOpenSession(scoped, {
       workspaceId,

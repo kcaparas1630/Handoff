@@ -58,6 +58,15 @@ const DEFAULT_ANTHROPIC_MODEL_ID = "claude-opus-5";
 // Milestone 3 starts at two concurrent jobs with measured timeouts (roadmap logic boundaries).
 const DEFAULT_WORKER_CONCURRENCY = 2;
 const DEFAULT_WORKER_LEASE_SECONDS = 120;
+// Roadmap milestone 5: quotas authorize resource creation before provider work. The defaults are
+// per workspace per UTC day unless the name says otherwise, and are deliberately generous enough
+// that a pilot caregiver never meets one by accident.
+const DEFAULT_METRICS_FLUSH_SECONDS = 60;
+const DEFAULT_CAPTURES_PER_USER_PER_DAY = 200;
+const DEFAULT_AUDIO_SECONDS_PER_WORKSPACE_PER_DAY = 3600;
+const DEFAULT_EXTRACTION_USD_PER_WORKSPACE_PER_DAY = 5;
+// How long a deleted workspace's scope keys stay decrypt-only before they may be retired.
+const DEFAULT_WORKSPACE_KEY_RETENTION_DAYS = 30;
 
 const rawServerEnvSchema = z.object({
   NODE_ENV: z.string().optional(),
@@ -86,6 +95,20 @@ const rawServerEnvSchema = z.object({
   DATABASE_JOB_DISPATCH_URL: optionalSetting("DATABASE_JOB_DISPATCH_URL"),
   WORKER_CONCURRENCY: optionalCount("WORKER_CONCURRENCY", 16),
   WORKER_LEASE_SECONDS: optionalCount("WORKER_LEASE_SECONDS", 3600),
+  METRICS_FLUSH_SECONDS: optionalCount("METRICS_FLUSH_SECONDS", 3600),
+  // Absent means `GET /v1/internal/metrics` answers 404: the endpoint does not exist until an
+  // operator configures a token for it.
+  INTERNAL_METRICS_TOKEN: optionalSetting("INTERNAL_METRICS_TOKEN"),
+  QUOTA_CAPTURES_PER_USER_PER_DAY: optionalCount("QUOTA_CAPTURES_PER_USER_PER_DAY", 100_000),
+  QUOTA_AUDIO_SECONDS_PER_WORKSPACE_PER_DAY: optionalCount(
+    "QUOTA_AUDIO_SECONDS_PER_WORKSPACE_PER_DAY",
+    1_000_000,
+  ),
+  QUOTA_EXTRACTION_USD_PER_WORKSPACE_PER_DAY: optionalCount(
+    "QUOTA_EXTRACTION_USD_PER_WORKSPACE_PER_DAY",
+    10_000,
+  ),
+  WORKSPACE_KEY_RETENTION_DAYS: optionalCount("WORKSPACE_KEY_RETENTION_DAYS", 3650),
   INVITATION_REDIRECT_URL: absoluteUrl("INVITATION_REDIRECT_URL"),
   APP_LINK_PARENTS: absoluteUrl("APP_LINK_PARENTS"),
   APP_LINK_DAYCARE: absoluteUrl("APP_LINK_DAYCARE"),
@@ -155,4 +178,16 @@ export const serverEnvSchema = rawServerEnvSchema
     databaseJobDispatchUrl: value.DATABASE_JOB_DISPATCH_URL ?? null,
     workerConcurrency: value.WORKER_CONCURRENCY ?? DEFAULT_WORKER_CONCURRENCY,
     workerLeaseSeconds: value.WORKER_LEASE_SECONDS ?? DEFAULT_WORKER_LEASE_SECONDS,
+    metricsFlushSeconds: value.METRICS_FLUSH_SECONDS ?? DEFAULT_METRICS_FLUSH_SECONDS,
+    internalMetricsToken: value.INTERNAL_METRICS_TOKEN ?? null,
+    quotaCapturesPerUserPerDay:
+      value.QUOTA_CAPTURES_PER_USER_PER_DAY ?? DEFAULT_CAPTURES_PER_USER_PER_DAY,
+    quotaAudioSecondsPerWorkspacePerDay:
+      value.QUOTA_AUDIO_SECONDS_PER_WORKSPACE_PER_DAY ??
+      DEFAULT_AUDIO_SECONDS_PER_WORKSPACE_PER_DAY,
+    quotaExtractionUsdPerWorkspacePerDay:
+      value.QUOTA_EXTRACTION_USD_PER_WORKSPACE_PER_DAY ??
+      DEFAULT_EXTRACTION_USD_PER_WORKSPACE_PER_DAY,
+    workspaceKeyRetentionDays:
+      value.WORKSPACE_KEY_RETENTION_DAYS ?? DEFAULT_WORKSPACE_KEY_RETENTION_DAYS,
   }));

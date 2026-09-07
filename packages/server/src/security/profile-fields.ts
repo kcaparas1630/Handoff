@@ -98,6 +98,41 @@ export async function decryptChildProfile(
   return childProfilePayloadSchema.parse(payload);
 }
 
+/**
+ * What a purged child's profile becomes. The row survives so retained redacted briefs and audit
+ * records still resolve, and the ciphertext is a real envelope under the workspace key rather than
+ * a null column, so nothing downstream has to interpret an absence.
+ */
+export const CHILD_PROFILE_TOMBSTONE = { schemaVersion: 1, name: null, birthdate: null };
+
+export function encryptChildTombstone(
+  keys: DataKeyService,
+  input: { workspaceId: string; childId: string },
+): Promise<CiphertextEnvelope> {
+  return encryptField({
+    keys,
+    scope: workspaceScope(input.workspaceId),
+    record: childProfileRecord(input.childId),
+    payload: CHILD_PROFILE_TOMBSTONE,
+  });
+}
+
+/**
+ * Decrypts a child profile without deciding it is still a readable profile. A purged child's
+ * envelope holds the tombstone above, which the ordinary payload schema rejects.
+ */
+export function decryptChildProfileEnvelope(
+  keys: DataKeyService,
+  input: { workspaceId: string; childId: string; envelope: unknown },
+): Promise<unknown> {
+  return decryptField({
+    keys,
+    scope: workspaceScope(input.workspaceId),
+    record: childProfileRecord(input.childId),
+    envelope: input.envelope,
+  });
+}
+
 export function encryptInviteeEmail(
   keys: DataKeyService,
   input: { workspaceId: string; invitationId: string; email: string },

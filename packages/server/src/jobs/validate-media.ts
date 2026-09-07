@@ -29,6 +29,7 @@ import { buildNormalizedImageKey, buildObjectKey } from "../lib/object-key";
 import { inspectMedia, isRejected } from "../media/inspect";
 import { attachmentLimitsForAsset } from "../media/lib/attachment-limits";
 import { normalizeImage } from "../media/normalize-image";
+import { recordStorageLevels } from "../observability/metrics";
 import {
   decryptEventPayload,
   decryptRevisionSnapshot,
@@ -126,16 +127,19 @@ async function reject(
       assetId: asset.id,
     });
     if (released === null) return;
-    await storageQuotaRepository.releaseStorageBytes(tx, {
+    const levels = await storageQuotaRepository.releaseStorageBytes(tx, {
       workspaceId,
       reservedBytes: asset.reservedBytes,
     });
+    recordStorageLevels(runtime.metrics, levels);
   });
   await runtime.storage.deleteObject(asset.objectKey);
   // The reason is a closed code, not the decoder's message or anything from the file itself.
-  console.info(
-    JSON.stringify({ event: "media_rejected", assetId: asset.id, kind: asset.kind, reason }),
-  );
+  runtime.logger.info("media_rejected", {
+    assetId: asset.id,
+    stage: asset.kind,
+    errorCode: reason,
+  });
   return { status: "completed" };
 }
 
@@ -185,11 +189,12 @@ async function markReady(
     });
     if (row === null) return null;
     // The transition above is the licence to move the counter, in this same transaction.
-    await storageQuotaRepository.settleStorageBytes(tx, {
+    const levels = await storageQuotaRepository.settleStorageBytes(tx, {
       workspaceId,
       reservedBytes: row.reservedBytes,
       actualBytes: publishedSize,
     });
+    recordStorageLevels(runtime.metrics, levels);
     return row;
   });
   if (ready === null) {
@@ -233,9 +238,7 @@ async function publish(runtime: WorkerRuntime, asset: MediaAssetRow): Promise<Jo
     }
     return count;
   });
-  console.info(
-    JSON.stringify({ event: "media_published", assetId: asset.id, revisions: appended }),
-  );
+  runtime.logger.info("media_published", { assetId: asset.id, count: appended });
   return { status: "completed" };
 }
 
@@ -261,7 +264,7 @@ async function deleteSupersededRawUpload(
   try {
     await runtime.storage.deleteObject(rawKey);
   } catch {
-    console.info(JSON.stringify({ event: "media_raw_delete_deferred", assetId: asset.id }));
+    runtime.logger.info("media_raw_delete_deferred", { assetId: asset.id });
   }
 }
 

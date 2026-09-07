@@ -16,6 +16,7 @@ import { createAnthropicExtraction } from "../packages/server/src/ai/anthropic";
 import { validateExtractionSemantics } from "../packages/server/src/ai/lib/validate-extraction";
 import { PROMPT_VERSION } from "../packages/server/src/ai/prompts/extract-events-v1";
 import { ProviderError } from "../packages/server/src/lib/provider-error";
+import { PROVIDER_RATES } from "../packages/server/src/lib/provider-rates";
 import { createDeepgramTranscription } from "../packages/server/src/transcription/deepgram";
 import {
   CRITICAL_FIELDS,
@@ -31,20 +32,11 @@ import type { ExtractionProvider } from "../packages/server/src/ai/extract-event
 import type { TranscriptionProvider } from "../packages/server/src/transcription/provider";
 import type { FieldTally, Mismatch, ModeReport, Rates, ScoredCase } from "./lib/extraction-scoring";
 
-// Anthropic list prices for Claude Opus 5, read 2026-06-24. Replace with the contracted rate
-// before quoting a per-recording figure against the roadmap's US$0.02 budget.
-const ANTHROPIC_INPUT_USD_PER_MTOK = 5;
-const ANTHROPIC_OUTPUT_USD_PER_MTOK = 25;
-
-// PLACEHOLDER, not a contracted Deepgram rate: no price has been confirmed for this project, so
-// every transcription cost this script reports is an illustration until this constant is replaced.
-const DEEPGRAM_PLACEHOLDER_USD_PER_AUDIO_SECOND = 0.0001;
-
-const RATES: Rates = {
-  anthropicInputUsdPerMTok: ANTHROPIC_INPUT_USD_PER_MTOK,
-  anthropicOutputUsdPerMTok: ANTHROPIC_OUTPUT_USD_PER_MTOK,
-  transcriptionUsdPerAudioSecond: DEEPGRAM_PLACEHOLDER_USD_PER_AUDIO_SECOND,
-};
+// Provider prices live in packages/server/src/lib/provider-rates.ts, which is also what the
+// runtime spend cap reads: a rate change cannot make a budget and a cost report disagree. The
+// Deepgram figure there is still a placeholder, so every transcription cost below is an
+// illustration until it is replaced with a contracted rate.
+const RATES: Rates = PROVIDER_RATES;
 
 const DEFAULT_CASES_PATH = "tests/fixtures/extraction-cases.jsonl";
 const DEFAULT_AUDIO_MANIFEST_PATH = "tests/fixtures/audio/manifest.json";

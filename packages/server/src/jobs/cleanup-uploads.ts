@@ -12,6 +12,7 @@ import {
 import type { HandoffDatabase, MediaAssetRow, MediaKind } from "@handoff/db";
 import { assetIdFromObjectKey, workspaceObjectPrefix } from "../lib/object-key";
 import { cleanupUploadsDedupeKey } from "../services/job-keys";
+import { recordStorageLevels } from "../observability/metrics";
 import type { JobHandler } from "../types/jobs";
 import type { WorkerRuntime } from "../types/runtime";
 
@@ -100,10 +101,11 @@ async function purgeAsset(runtime: WorkerRuntime, asset: MediaAssetRow): Promise
       assetId: asset.id,
     });
     if (released === null) return;
-    await storageQuotaRepository.releaseStorageBytes(tx, {
+    const levels = await storageQuotaRepository.releaseStorageBytes(tx, {
       workspaceId,
       reservedBytes: asset.reservedBytes,
     });
+    recordStorageLevels(runtime.metrics, levels);
   });
 }
 
@@ -136,8 +138,6 @@ async function reconcileOrphanObjects(runtime: WorkerRuntime, workspaceId: strin
   for (const objectKey of orphans) await runtime.storage.deleteObject(objectKey);
   if (orphans.length > 0) {
     // Counts only: an object key names a workspace, child, capture, and asset.
-    console.info(
-      JSON.stringify({ event: "storage_orphans_removed", count: orphans.length, workspaceId }),
-    );
+    runtime.logger.info("storage_orphans_removed", { count: orphans.length, workspaceId });
   }
 }

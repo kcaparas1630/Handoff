@@ -21,7 +21,13 @@ import { ProviderError } from "../lib/provider-error";
 import { EncryptionError } from "../security/encryption/errors";
 import { decryptCaptureDraft, encryptCaptureDraft } from "../security/journal-fields";
 import { decryptChildProfile } from "../security/profile-fields";
+import { recordStorageLevels } from "../observability/metrics";
 import { findAudioAsset } from "../services/capture-uploads";
+import {
+  assertExtractionBudget,
+  BudgetExceededError,
+  recordProviderUsage,
+} from "../services/quotas";
 import { buildDraftCandidates } from "./lib/draft-candidates";
 import type { DataKeyService } from "../security/encryption/data-keys";
 import type { JobContext, JobHandler, JobOutcome } from "../types/jobs";
@@ -67,7 +73,7 @@ export const processCapture: JobHandler = async (context) => {
     if (prepared.kind === "done") return prepared.outcome;
     const transcript = await transcribeIfNeeded(context, prepared.work);
     // Null means a newer attempt already wrote this capture's transcript and owns it now.
-    if (transcript === null) return supersededBy(context.job.id);
+    if (transcript === null) return supersededBy(context);
     return await extractAndCommit(context, prepared.work, transcript);
   } catch (error) {
     return reportFailure(context, ids, error);
@@ -174,11 +180,13 @@ async function transcribeIfNeeded(context: JobContext, work: CaptureWork): Promi
   }
 
   const audio = await context.runtime.storage.readObject(asset.objectKey, AUDIO_MAX_BYTES);
-  const result = await context.runtime.transcription.transcribe({
-    audio,
-    mime: asset.declaredMime,
-    language: "en",
-  });
+  const result = await callProvider(context.runtime, "deepgram", () =>
+    context.runtime.transcription.transcribe({
+      audio,
+      mime: asset.declaredMime,
+      language: "en",
+    }),
+  );
 
   // The transcript goes into the encrypted capture and nowhere else; the checkpoint records only
   // that the stage finished (docs/pii-encryption.md, "Provider checkpoint text").
@@ -191,6 +199,11 @@ async function transcribeIfNeeded(context: JobContext, work: CaptureWork): Promi
   work.capture = written;
   await context.saveCheckpoint(TRANSCRIBED_CHECKPOINT);
   await settleAudioReservation(context.runtime, asset);
+  await recordProviderUsage({
+    runtime: context.runtime,
+    workspaceId: work.ids.workspaceId,
+    audioSeconds: Math.round((result.durationMs ?? asset.durationMs ?? 0) / 1000),
+  });
   return result.transcript;
 }
 
@@ -210,11 +223,12 @@ async function settleAudioReservation(runtime: WorkerRuntime, asset: MediaAssetR
       verifiedMime: asset.declaredMime,
     });
     if (ready === null) return;
-    await storageQuotaRepository.settleStorageBytes(tx, {
+    const levels = await storageQuotaRepository.settleStorageBytes(tx, {
       workspaceId,
       reservedBytes: ready.reservedBytes,
       actualBytes: ready.sizeBytes ?? ready.reservedBytes,
     });
+    recordStorageLevels(runtime.metrics, levels);
   });
 }
 
@@ -225,14 +239,25 @@ async function extractAndCommit(
   transcript: string,
 ): Promise<JobOutcome> {
   const { runtime } = context;
-  const extracted = await runtime.extraction.extract({
-    schemaVersion: 1,
-    rawTranscript: transcript,
-    recordingStartedAt: work.capture.capturedAt.toISOString(),
-    timezone: work.capture.timezone,
-    locale: work.capture.locale,
-    childAlias: work.childAlias,
-    promptVersion: PROMPT_VERSION,
+  // The daily spend cap is checked immediately before the paid call, not when the job was queued.
+  await assertExtractionBudget({ runtime, workspaceId: work.ids.workspaceId });
+  const extracted = await callProvider(runtime, "anthropic", () =>
+    runtime.extraction.extract({
+      schemaVersion: 1,
+      rawTranscript: transcript,
+      recordingStartedAt: work.capture.capturedAt.toISOString(),
+      timezone: work.capture.timezone,
+      locale: work.capture.locale,
+      childAlias: work.childAlias,
+      promptVersion: PROMPT_VERSION,
+    }),
+  );
+
+  await recordProviderUsage({
+    runtime,
+    workspaceId: work.ids.workspaceId,
+    tokensIn: extracted.provenance.inputTokens,
+    tokensOut: extracted.provenance.outputTokens,
   });
 
   const validated = validateExtractionSemantics(extracted.output, transcript);
@@ -261,13 +286,34 @@ async function extractAndCommit(
   });
   // A version mismatch here means a newer attempt already published its draft. That attempt won;
   // this one completes without writing rather than failing a recording the caregiver can see.
-  if (committed === null) return supersededBy(context.job.id);
+  if (committed === null) return supersededBy(context);
   return { status: "completed" };
 }
 
+/** Counts one paid call by provider and outcome. The label set is closed; no payload is recorded. */
+async function callProvider<T>(
+  runtime: WorkerRuntime,
+  provider: string,
+  call: () => Promise<T>,
+): Promise<T> {
+  const startedAt = Date.now();
+  try {
+    const result = await call();
+    runtime.metrics.incrementCounter("provider_calls", { stage: provider, status: "ok" });
+    return result;
+  } catch (error) {
+    runtime.metrics.incrementCounter("provider_calls", { stage: provider, status: "failed" });
+    throw error;
+  } finally {
+    runtime.metrics.observeDuration("provider_call_duration_ms", Date.now() - startedAt, {
+      stage: provider,
+    });
+  }
+}
+
 /** Not a failure: the caregiver's capture is in the hands of a newer attempt. */
-function supersededBy(jobId: string): JobOutcome {
-  console.info(JSON.stringify({ event: "job_draft_superseded", jobId }));
+function supersededBy(context: JobContext): JobOutcome {
+  context.runtime.logger.info("job_draft_superseded", { jobId: context.job.id });
   return { status: "completed" };
 }
 
@@ -345,6 +391,10 @@ function classify(error: unknown): FailureShape {
   // A crypto or key failure is terminal by contract: there is no plaintext fallback and no
   // partial event (docs/pii-encryption.md).
   if (error instanceof EncryptionError) return { errorCode: "crypto_failure", retryable: false };
+  // A spent budget is not a provider fault and retrying tomorrow is the caregiver's decision.
+  if (error instanceof BudgetExceededError) {
+    return { errorCode: "budget_exceeded", retryable: false };
+  }
   if (error instanceof CaptureFailure) return { errorCode: error.errorCode, retryable: false };
   if (error instanceof ProviderError) {
     return {
