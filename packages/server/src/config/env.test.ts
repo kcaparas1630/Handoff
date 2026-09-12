@@ -48,6 +48,25 @@ describe("loadServerEnv", () => {
     expect(error.variables).toEqual(expect.arrayContaining(["PII_KMS_KEY_ID", "AWS_REGION"]));
   });
 
+  it("treats blank optional lines from a copied .env.example as absent", () => {
+    const env = loadServerEnv({
+      ...developmentSource,
+      CLERK_AUTHORIZED_PARTIES: "",
+      PII_KMS_KEY_ID: "",
+      AWS_REGION: "",
+      SUPABASE_URL: "",
+    });
+    expect(env.clerkAuthorizedParties).toBeNull();
+    expect(env.piiKmsKeyId).toBeNull();
+    expect(env.awsRegion).toBeNull();
+    expect(env.supabaseUrl).toBeNull();
+  });
+
+  it("still requires the development wrapping key when its line is blank", () => {
+    const error = loadError({ ...developmentSource, PII_DEV_WRAPPING_KEY_B64: "" });
+    expect(error.variables).toContain("PII_DEV_WRAPPING_KEY_B64");
+  });
+
   it("rejects the development wrapping adapter in production", () => {
     const error = loadError({ ...developmentSource, NODE_ENV: "production" });
     expect(error.variables).toContain("PII_KEY_PROVIDER");

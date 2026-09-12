@@ -58,11 +58,12 @@ All five milestones are implemented as engineering work; see the [milestone 1](d
 - [Experience design](docs/experience-design.md): care dashboard, inviting voice capture, quick entry, handoff presentation, and usability gates.
 - [PII encryption](docs/pii-encryption.md): encrypt before Postgres writes, authorize before server decryption, external key management, rotation, and recovery.
 - [Operations runbook](docs/runbook.md): process split, the sharp native binary requirement, storage bucket limits, the worker's job kinds, known media limitations, and triage.
+- [Setup](docs/setup.md): environment variables, database roles, local run, and EAS Android builds.
 - [Pilot plan](docs/pilot-plan.md) and [pilot results template](docs/pilot-results.md).
 - [Agent conventions](AGENTS.md): repository instructions, also available through the `CLAUDE.md` symlink; [research rationale](docs/conventions-rationale.md).
 
 ## Local development
 
-`docker compose up -d`, copy `.env.example` to `.env` and fill it, then `DATABASE_MIGRATION_URL=… pnpm db:migrate`, `pnpm dev:api`, `pnpm dev:worker`, and `pnpm dev:parents` or `pnpm dev:daycare`.
+Follow [docs/setup.md](docs/setup.md): it lists every environment variable and where it comes from, the database login users to create, how to run the API, worker, and apps locally, and how to build an Android APK with EAS.
 
 `CLAUDE.md` is stored as a relative Git symlink to `AGENTS.md`. This Windows checkout currently lacks symlink privilege and uses Git's link-text fallback; read `AGENTS.md` directly until native symlink support is available. The repository link remains mode `120000`. [Git symlink checkout behavior](https://git-scm.com/docs/git-config#Documentation/git-config.txt-coresymlinks)

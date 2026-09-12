@@ -74,14 +74,14 @@ const rawServerEnvSchema = z.object({
   CLERK_WEBHOOK_SIGNING_SECRET: requiredSecret("CLERK_WEBHOOK_SIGNING_SECRET"),
   CLERK_GUARDIAN_ROLE_KEY: requiredSecret("CLERK_GUARDIAN_ROLE_KEY"),
   // Comma separated list of accepted token `azp` values; omitted leaves Clerk's default.
-  CLERK_AUTHORIZED_PARTIES: z.string().min(1).optional(),
+  CLERK_AUTHORIZED_PARTIES: optionalSetting("CLERK_AUTHORIZED_PARTIES"),
   DATABASE_URL: requiredSecret("DATABASE_URL"),
   PII_KEY_PROVIDER: z.enum(["kms", "development"], {
     error: 'PII_KEY_PROVIDER must be "kms" or "development"',
   }),
-  PII_KMS_KEY_ID: z.string().min(1).optional(),
-  AWS_REGION: z.string().min(1).optional(),
-  PII_DEV_WRAPPING_KEY_B64: z.string().min(1).optional(),
+  PII_KMS_KEY_ID: optionalSetting("PII_KMS_KEY_ID"),
+  AWS_REGION: optionalSetting("AWS_REGION"),
+  PII_DEV_WRAPPING_KEY_B64: optionalSetting("PII_DEV_WRAPPING_KEY_B64"),
   // Storage, transcription, extraction, and queue settings stay optional so the API can boot for
   // health checks and manual entry without them; the use cases that need them ask explicitly.
   SUPABASE_URL: optionalUrl("SUPABASE_URL"),
